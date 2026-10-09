@@ -38,5 +38,5 @@ comparable per-pixel budget. Breaks for CPU-bound games, fixed per-frame costs
 | Game | Anti-cheat | Allowed tiers | Role |
 |---|---|---|---|
 | Monster Hunter Wilds | None (DRM/anti-tamper) | S + I | Full-stack test, heavy CPU+GPU |
-| Space Marine 2 | Easy Anti-Cheat | S only | Safe-tier test, owned or to confirm |
+| Space Marine 2 | Easy Anti-Cheat | S only | Safe-tier test (owned) |
 | Helldivers 2 | nProtect GameGuard (kernel) | S only | Later; mod/injection = ban risk |

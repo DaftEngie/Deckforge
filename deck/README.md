@@ -18,7 +18,7 @@ In Konsole:
 cd ~
 git clone https://github.com/DaftEngie/deckforge.git deckforge-repo
 ```
-(Exact URL will match wherever we create the repo.)
+(The repo is public, so no GitHub sign-in is needed on the Deck.)
 
 ## Step 3 — Run the setup script (1 min)
 ```
