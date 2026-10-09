@@ -103,7 +103,7 @@ def check_bash(command: str) -> None:
         rest = command[match.end() :]
         rest = re.split(r"[;&|\n]", rest, maxsplit=1)[0]
         targets = [t for t in rest.split() if not t.startswith("-")]
-        if not targets or not all(SAFE_RM_TARGET.match(t) for t in targets):
+        if not targets or not all(SAFE_RM_TARGET.match(t) and ".." not in t for t in targets):
             deny(
                 "Recursive delete outside a temp directory is blocked (R6). "
                 "Create a dir with mktemp and delete only inside it."
