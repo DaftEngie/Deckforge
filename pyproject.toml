@@ -1,0 +1,32 @@
+[project]
+name = "deckforge"
+version = "0.0.1"
+description = "Tune demanding PC games for the Steam Deck in handheld mode"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# E/F/W basics, B bugbear, S bandit (security), BLE blind except, SIM, UP, PTH pathlib,
+# ERA commented-out code, PL pylint subset.
+select = ["E", "F", "W", "B", "S", "BLE", "SIM", "UP", "PTH", "ERA", "PLE", "PLW"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S603", "S607"]
+"ci/**" = ["S603", "S607"]
+".claude/hooks/**" = ["S603", "S607", "S101"]

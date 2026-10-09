@@ -1,0 +1,23 @@
+name: weekly-gate-selftest
+
+# Proves the gates still reject known-bad changes (a gate that passes everything is
+# worse than no gate). Runs every Monday and on demand.
+on:
+  schedule:
+    - cron: "17 13 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: bash ci/gate_selftest.sh

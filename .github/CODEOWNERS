@@ -1,0 +1,8 @@
+# Fede owns everything that judges the agents.
+/ci/            @DaftEngie
+/.claude/       @DaftEngie
+/.github/       @DaftEngie
+/bench/         @DaftEngie
+/evals/         @DaftEngie
+/tests/         @DaftEngie
+/pyproject.toml @DaftEngie
