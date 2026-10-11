@@ -145,7 +145,7 @@ Interface:
   | `state_flags` | int, or `null` with a `stateflags_invalid` card warning if missing or not an integer |
   | `installed` | `(state_flags & 4) != 0` **and** the install folder exists. Examples: `"4"`, `"6"`, `"1030"` → true; `"16"`, `"1026"` → false |
   | `install_path` | `<library>/steamapps/common/<installdir>`. If that folder does not exist (exact case), add an `install_folder_missing` card warning |
-  | `prefix_path` | `<library>/steamapps/compatdata/<appid>/pfx` if it is a folder. If it is **absent** (not found, or a path part is not a folder), the same path under the root library, if that is a folder (then add a `prefix_in_other_library` card warning). Otherwise `null`. If checking the game's own prefix fails with any other OS error (permission, I/O, link loop), there is **no fallback**: `prefix_path` is `null` and a `prefix_unreadable` card warning is added (path = the game's own prefix path). Later phases write into prefixes, so a guess is never allowed (verifier F1/Q2, 2026-10-11) |
+  | `prefix_path` | `<library>/steamapps/compatdata/<appid>/pfx` if it is a folder. If it is **absent** (not found, or a path part is not a folder), the same path under the root library, if that is a folder (then add a `prefix_in_other_library` card warning). Otherwise `null`. If checking the game's own prefix fails with any other OS error (permission, I/O, link loop), there is **no fallback**: `prefix_path` is `null` and a `prefix_unreadable` card warning is added (path = the game's own prefix path). The same applies to the root-library fallback: an OS error other than "absent" while checking it gives `prefix_path: null` and `prefix_unreadable` (path = the root-library prefix path). Later phases write into prefixes, so a guess is never allowed (verifier F1/Q2, 2026-10-11) |
   | `shadercache_path` | `<library>/steamapps/shadercache/<appid>` if it is a folder, else `null` |
   | `compat_tool` | See B5 |
   | `warnings` | Card issues, sorted |
@@ -213,6 +213,11 @@ Interface:
   - **Cap:** at most 20,000 entries (files, folders and links) per start folder.
   - **Links:** a link found during a walk is matched by its name but never entered. The
     start folder itself may be a link.
+  - **Not entered (safety):** in the install walk and the C3 `Program Files` walks, a link
+    that points to a folder, or a folder on another device, adds a `not_entered` card
+    warning (path = that entry's absolute path), because anti-cheat could sit behind it.
+    The C6 settings walks skip such entries silently. Broken links and links to files add
+    nothing.
   - **Disks:** never descend into a folder on a different device (`st_dev`) than the
     start folder.
   - **Truncation:** the card gets a `scan_truncated` warning (path = the start folder)
@@ -270,7 +275,8 @@ Interface:
   `injector_with_anticheat` card warning (path = its evidence path).
 - **C6 Settings files.** `settings_files` is `[{"path": str (absolute), "class": "P" |
   "I", "kind": str}]`, sorted by path. Each engine that matched is searched; an
-  `ambiguous` game gets all of them.
+  `ambiguous` game gets the searches of every engine that matched (not of engines that
+  did not match).
   - **RE Engine:** `config.ini` at the install root → class `I`, kind `ini`.
   - **Unity:**
     - `boot.config` inside a `*_Data` folder at the root or one level below → class
@@ -287,10 +293,17 @@ Interface:
   - Entries are de-duplicated by real path (Proton's `My Documents` is a link to
     `Documents`); the first path in sorted order is kept.
   - Only file names are inspected; settings files are never opened.
+  - Only regular files that are not links are listed (`DirEntry.is_file(follow_symlinks=False)`;
+    for `user.reg`, `lstat`). Links, FIFOs and other special files with a settings name are
+    left out, because later phases write to these paths.
 - **C7 Tier I eligibility.** `tier_i_eligible` is true only if **all** of the following
   hold:
   - `kind == "game"`;
+  - `installed` is true (an update or download in progress is never eligible);
   - the install folder exists;
+  - `prefix_path` is not `null`, and there is no `prefix_unreadable` warning (otherwise
+    C3's prefix walks never ran);
+  - no `not_entered` warning;
   - no walk for this card was truncated;
   - no `unreadable` warning;
   - `anticheat` is empty.
