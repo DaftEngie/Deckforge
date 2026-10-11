@@ -145,13 +145,21 @@ Interface:
   | `state_flags` | int, or `null` with a `stateflags_invalid` card warning if missing or not an integer |
   | `installed` | `(state_flags & 4) != 0` **and** the install folder exists. Examples: `"4"`, `"6"`, `"1030"` → true; `"16"`, `"1026"` → false |
   | `install_path` | `<library>/steamapps/common/<installdir>`. If that folder does not exist (exact case), add an `install_folder_missing` card warning |
-  | `prefix_path` | `<library>/steamapps/compatdata/<appid>/pfx` if it is a folder. Otherwise the same path under the root library, if it is a folder (then add a `prefix_in_other_library` card warning). Otherwise `null` |
+  | `prefix_path` | `<library>/steamapps/compatdata/<appid>/pfx` if it is a folder. If it is **absent** (not found, or a path part is not a folder), the same path under the root library, if that is a folder (then add a `prefix_in_other_library` card warning). Otherwise `null`. If checking the game's own prefix fails with any other OS error (permission, I/O, link loop), there is **no fallback**: `prefix_path` is `null` and a `prefix_unreadable` card warning is added (path = the game's own prefix path). Later phases write into prefixes, so a guess is never allowed (verifier F1/Q2, 2026-10-11) |
   | `shadercache_path` | `<library>/steamapps/shadercache/<appid>` if it is a folder, else `null` |
   | `compat_tool` | See B5 |
   | `warnings` | Card issues, sorted |
 
   Path strings are built with `os.path.join` from the library's path string. They are
   not resolved.
+
+  **Errors while checking folders are never silent (R12).** When a folder check (for
+  `steamapps`, `common`, an install folder, a prefix or a shader cache) fails with an
+  OS error other than "not found" or "not a folder", one of two things must happen. The
+  problem becomes an issue whose path is that folder, or it is logged at WARNING level
+  with that path (logger `deckforge.discover`). If `<library>/steamapps/common` exists
+  but cannot be listed, a top-level `common_unreadable` warning is added (path = that
+  folder), and the games in that library get `install_folder_missing` as before.
 - **B5 Proton version.** Read `<root>/config/config.vdf` (regular file, ≤16 MiB, UTF-8).
   - `compat_tool` = `find(cfg, "InstallConfigStore", "Software", "Valve", "Steam",
     "CompatToolMapping", "<appid>", "name")`. An empty string becomes `null`.
