@@ -1,6 +1,7 @@
 # Past the settings menu: what DeckForge could invent
 
-Status: **PROPOSED**, 2026-10-11, revised after an independent verifier review (FAIL → fixed).
+Status: **PROPOSED**, 2026-10-11. Revised after independent verifier review; re-check: all 21
+original findings fixed, 4 wording issues then corrected.
 It answers Fede's challenge: *"invent something new, something which by code alone can enhance
 the experience natively on the Deck. Don't dismiss it because GeForce NOW or FSR exist."*
 
@@ -45,7 +46,7 @@ deliberately:
 |---|---|---|
 | Frames the camera needs vs frames the game needs | Show 90 Hz *camera* motion from a 30–45 fps game using your newest stick input (invention 1) | VR runtimes; engine-side flat-screen mods and demos. NVIDIA's game version was unreleased as of Aug 2026. No game-agnostic version found |
 | Pixels a 7" screen can't show | Retrofit a game the way a console port team would: cheaper fog, GI, shadows (invention 2) | Hand-made per-game mods. No repeatable pipeline found |
-| Watts in the wrong chip | Shift power between CPU and GPU frame by frame (invention 3) | Android and phones. No Deck test found |
+| Watts in the wrong chip | Shift power between CPU and GPU per scene (invention 3) | Android and phones. No Deck test found |
 | CPU work that could run elsewhere | Choose CPU or GPU texture decompression per scene in Wilds (add-on to invention 2) | A manual mod toggle exists |
 | Image quality per millisecond | Our own small reconstruction model (research track) | Arm publishes a retrainable model |
 
@@ -116,8 +117,8 @@ camera responds faster. VR headsets have done this for years (asynchronous timew
 ### The hard problems, most dangerous first
 
 1. **Low frame rates looked bad in the only public test.** A community Reflex 2 demo showed
-   "major visual issues" at 30 *and* 60 fps caps, and that demo had engine camera data plus extra
-   rendered border area. It looked fine at 100 fps [reprojection §3]. DeckWarp would start below
+   "major visual issues" at 30 *and* 60 fps caps, and that demo had engine camera data (a later version
+   added extra rendered border area to fix the edges). It looked fine at 100 fps [reprojection §3]. DeckWarp would start below
    60.
 2. **Third-person orbit cameras.** Both test games orbit the camera around your character.
    A rotation-only warp slides everything, the character included: about 22 px per warped frame
@@ -306,7 +307,7 @@ than 2.5 ms, stop. If it passes, budget decisions come next (N7).
 | **X7** | INT8 network microbenchmark | Deck | After X1 | DeckSR |
 | **X8** | LAVD, swappiness, THP, and Wilds CPU/GPU decompression, each A/B | Deck bench | One evening | The cheap extras |
 
-X2 can start this week without the Deck. X1, X4 and X5 fit in one Deck evening.
+X2 can start this week without the Deck. X1, X4 and X5 take about two Deck evenings.
 
 ---
 
@@ -376,7 +377,7 @@ Legal review comes before any paid offering.
 | # | Decision | Recommendation |
 |---|---|---|
 | N1 | Adopt the "automated Deck port team" direction alongside Phase 1 | Yes, as experiments first (section 7) |
-| N2 | Run X2 (Mac) now, and X1 + X4 + X5 at the next Deck evening | Yes |
+| N2 | Run X2 (Mac) now, and X1 + X4 + X5 over the next two Deck evenings | Yes |
 | N3 | Accept maintaining a vkd3d-proton fork for port surgery (Tier I games only) | Decide after X1 |
 | N4 | Income model | Later, after a working prototype and legal review |
 | N5 | Treat a nested, forked compositor (DeckWarp-C) as Tier S, i.e. allowed for anti-cheat games? Only defensible if no DeckForge or modified layer ever loads into the game | Undecided. Not before X2 passes and the anti-cheat question is researched |
