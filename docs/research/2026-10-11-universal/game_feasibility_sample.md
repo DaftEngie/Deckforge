@@ -1,6 +1,6 @@
 # Which demanding 2022–2026 PC games a Steam Deck can run at 30 fps with near-High settings at native 800p (as of 11 Oct 2026)
 
-> **Correction by the lead (2026-10-11):** the Lies of P result ("about 50 fps average" at default settings) was measured with FSR 2 set to Quality, not at native 800p. I checked the overkill.wtf article directly. Lies of P therefore belongs in class B, not A, and class A has 2 games (Elden Ring, Armored Core VI), about 6% of the 35 classified. The rest of this note is unchanged.
+> **Correction by the lead (2026-10-11):** the Lies of P result ("about 50 fps average" at default settings) was measured with FSR 2 set to Quality, not at native 800p. I checked the overkill.wtf article directly. Lies of P therefore belongs in class B, not A, and class A has 2 games (Elden Ring, Armored Core VI), about 6% of the 35 classified. Affected lines below are marked "[corrected]".
 
 **How to read this.** In the notes, **[M]** means a tester reported numbers they saw on the Deck. **[C]** means a claim, a qualitative statement, a developer target or a prediction. Most "measured" Deck data are reviewers playing with an on-screen frame counter, not controlled benchmarks. Only a few sources report averages and lows: TechPowerUp (Spider-Man 2), SDHQ's analysis tool (Crimson Desert), SDHQ's Deck Dive (Hogwarts) and LevelUp's citation (Wukong). Most sources do not say whether they used an LCD or OLED Deck. The OLED is 2–9% faster ([Eurogamer via Overclockers.ru, cited in the DeckForge rethink note](https://overclockers.ru/blog/NOVO_GEEK/show/158278/Moe-mnenie-o-Steam-Deck-OLED-Eurogamer)).
 
@@ -9,7 +9,7 @@
 ## Q1. What share of demanding 2022–2026 games reach 30 fps at High or near-High at native 800p?
 
 ### Takeaway
-Of 35 classified games, only 3 (about 9%) clear the owner's bar of roughly High settings at native 800p and 30 fps: Elden Ring, Armored Core VI and Lies of P. All three are 2022–23 games that also shipped on PS4.
+Of 35 classified games, only 2 (about 6%) clear the owner's bar of roughly High settings at native 800p and 30 fps: Elden Ring and Armored Core VI [corrected: Lies of P moved to B]. Both are 2022–23 games that also shipped on PS4.
 
 - **Current-gen-only games (26 classified):** none reach class A. Most need Low settings plus heavy upscaling to hold about 30 (class C, 12 games) or miss 30 even then (class D, 8 games).
 - **What "Verified" means:** Valve's Verified badge requires only 30 fps at the game's *default* settings ([Steamworks via DeckForge rethink note](https://partner.steamgames.com/doc/steamhardware/compat)). Many 2025–26 Verified games reach it with locked low presets that reviewers call blurry.
@@ -29,7 +29,7 @@ Of 35 classified games, only 3 (about 9%) clear the owner's bar of roughly High 
   - High preset at 1280×800 with a 30 lock is "near-flawless". Default settings uncapped ran about 34–50 fps.
   - Late bosses dip into the 30s. With dynamic resolution off there are short dips to 28.
   - [overkill.wtf](https://overkill.wtf/armored-core-vi-fires-of-rubicon-best-steam-deck-settings/)
-- **Lies of P** (overkill.wtf, 15 Sep 2023) [M]
+- **Lies of P** (overkill.wtf, 15 Sep 2023) [M] [corrected: belongs in class B; the source's ~50 fps default result used FSR 2 Quality]
   - Default settings at native 800p: about 50 fps average, dipping into the 40s.
   - Lowering Visibility from High to Medium: about +12 fps. Lowering Shadows from Medium to Low: about +14 fps.
   - Recommended build: FSR 2 Quality plus a Medium/High mix, aiming toward 60 fps.
@@ -157,7 +157,7 @@ Of 35 classified games, only 3 (about 9%) clear the owner's bar of roughly High 
 ### Inferences
 - **The bar is met only by games built for PS4-class hardware.**
   - All three class A games are cross-gen titles from 2022–23. The PS4 platform lists come from my background knowledge; I did not source them in this pass.
-  - Cross-gen games with a PS4 version: 9 classified, of which A = 3, B = 4, B/C = 1, D = 1 (Horizon Forbidden West).
+  - Cross-gen games with a PS4 version: 9 classified, of which A = 2, B = 5, B/C = 1, D = 1 (Horizon Forbidden West) [corrected].
   - Current-gen-only games: 26 classified, of which A = 0, B = 1 (Kingdom Come: Deliverance II), B/C = 3, C = 12, D = 8, X = 2.
 - **Verified does not mean High.** At least five 2025–26 Verified games (Monster Hunter Wilds, Crimson Desert, Assassin's Creed Shadows, Clair Obscur, Doom: The Dark Ages) reach the badge with locked or lowest presets plus upscaling.
 - **Most class C and D games are upscaling from far below 800p.** Typical render scales are 50–67%, or FSR Performance and Ultra Performance. Native 800p needs about 1.5–4x more pixels, which no settings tool can make up.
@@ -323,7 +323,7 @@ CPU limits are documented in crowds, hordes and dense hubs: Space Marine 2 battl
 |---|---|---|---|---|---|---|---|
 | Elden Ring | 2022 | FromSoftware | Custom High/Medium mix, 1280×800 native, no upscaler, 30 cap; dips to mid-30s uncapped | overkill.wtf (~2024) C; SDHQ review M | Verified | **A** | No |
 | Armored Core VI | 2023 | FromSoftware | High preset, 800p native, 30 lock "near-flawless"; uncapped 34–50, late bosses to 28 | overkill.wtf (~Sep 2023) M/C | ? | **A** | No |
-| Lies of P | 2023 | UE4 | Default (Visibility High, Shadows Med), 800p native, ~50 avg | overkill.wtf 15 Sep 2023 M | ? | **A** | No |
+| Lies of P | 2023 | UE4 | Default (Medium/High mix) with FSR 2 Quality, ~50 avg [corrected: not native] | overkill.wtf 15 Sep 2023 M | ? | **B** [corrected] | No |
 | Elden Ring Nightreign | 2025 | FromSoftware | Medium + Low shadows, 720/800p, no upscaler, mostly 30 with drops | RPGSite 28 May 2025 M | Playable at launch | **B** | ? |
 | Kingdom Come II | 2025 | CryEngine | Low preset, 800p native: 35–45; Low/Med mix at 30 cap | overkill.wtf 3 Feb 2025 M; RPGSite 4 Feb 2025 M | ? | **B** | Possible (Kuttenberg) |
 | Hogwarts Legacy | 2023 | UE4 | High native ~20; High + FSR 2 ~30; Low ~40 (worst-case route) | SDHQ 21 Apr 2023 M | Verified | **B** (borderline) | Yes (after FSR; VRAM) |
@@ -365,15 +365,15 @@ CPU limits are documented in crowds, hordes and dense hubs: Space Marine 2 battl
 
 | Class | Count | Share | Games |
 |---|---|---|---|
-| A | 3 | 9% | Elden Ring, Armored Core VI, Lies of P |
-| B | 5 | 14% | Nightreign, Kingdom Come II, Hogwarts (borderline), Ghost of Tsushima (claimed), RE4 (claimed) |
+| A | 2 | 6% | Elden Ring, Armored Core VI [corrected] |
+| B | 6 | 17% | Nightreign, Kingdom Come II, Hogwarts (borderline), Ghost of Tsushima (claimed), RE4 (claimed), Lies of P [corrected] |
 | B/C | 4 | 11% | God of War Ragnarök, 007 First Light, RE Requiem, Pragmata |
 | C | 12 | 34% | Monster Hunter Wilds, Helldivers 2, Cyberpunk, Wukong, Doom: The Dark Ages, FF XVI, FF VII Rebirth, AC Shadows, Clair Obscur, Silent Hill 2, Death Stranding 2, Onimusha |
 | D | 9 | 26% | Space Marine 2, Starfield, Alan Wake 2, Dragon's Dogma 2, Stalker 2, Indiana Jones, Spider-Man 2, Horizon Forbidden West, Crimson Desert |
 | X | 2 | 6% | Battlefield 6, Marathon |
 | Unclassified | 2 | — | Baldur's Gate 3, Phantom Blade Zero |
 
-- **Cross-gen (PS4 version exists), 9 games:** A 3, B 4, B/C 1, D 1.
+- **Cross-gen (PS4 version exists), 9 games:** A 2, B 5, B/C 1, D 1 [corrected].
 - **Current-gen-only, 26 classified games:** A 0, B 1, B/C 3, C 12, D 8, X 2.
 
 ## Optimized settings: gains versus High
@@ -393,4 +393,4 @@ CPU limits are documented in crowds, hordes and dense hubs: Space Marine 2 battl
 
 **Bottom line for DeckForge.** A perceptual optimizer is worth about 5–25% over a game's High preset at the same look. The Deck's gap to native High at 30 is 0–25% only for the three class A games and possibly two or three class B cross-gen titles. For the other roughly 30 demanding games the gap is about 1.5–4x. The honest product verdict for most current-gen-only titles is therefore "best look at about 30 fps with an upscaler", or BLOCKED.
 
-**Worth remembering for the DeckForge project:** in a sample of 35 demanding PC games from 2022–2026 (as of Oct 2026), only 3 met "High at native 800p and 30 fps" on the Deck: Elden Ring, Armored Core VI and Lies of P, all cross-gen PS4 titles. No current-gen-only title did.
+**Worth remembering for the DeckForge project:** in a sample of 35 demanding PC games from 2022–2026 (as of Oct 2026), only 2 met "High at native 800p and 30 fps" on the Deck: Elden Ring and Armored Core VI, both cross-gen PS4 titles [corrected]. No current-gen-only title did.
