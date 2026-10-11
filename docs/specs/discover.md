@@ -299,7 +299,9 @@ Interface:
 - **C7 Tier I eligibility.** `tier_i_eligible` is true only if **all** of the following
   hold:
   - `kind == "game"`;
-  - `installed` is true (an update or download in progress is never eligible);
+  - `installed` is true **and** `state_flags == 4` exactly (fully installed, nothing
+    pending: "1030" counts as installed for B4 but has an update started, so it is never
+    eligible);
   - the install folder exists;
   - `prefix_path` is not `null`, and there is no `prefix_unreadable` warning (otherwise
     C3's prefix walks never ran);
