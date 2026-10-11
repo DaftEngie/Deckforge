@@ -42,7 +42,7 @@ frame-rate lock, it says so and offers the next-best option: a lower lock, or cl
 | Settings files in the prefix (Class P) | `steamapps/compatdata/<appid>/pfx/drive_c/users/steamuser/{AppData,Documents}`; Unity PlayerPrefs in `pfx/user.reg` [platform §4; levers: Unity] | Safest files to edit: Steam "verify" does not touch them |
 | Settings files in the install folder (Class I) | `steamapps/common/<installdir>/` — e.g. **Wilds' `config.ini` lives here** [levers: RE Engine] | Verify and updates can revert them (for Wilds' `config.ini` this is untested, E15); anti-tamper may check them |
 | Engine | File signatures: Unreal (`*/Binaries/Win64/*-Shipping.exe`), Unity (`UnityPlayer.dll`, `*_Data/boot.config`), RE Engine (`re_chunk_000.pak` + `config.ini`; the `.pak` name is **UNVERIFIED**, from general knowledge) | Chooses the lever template |
-| Graphics API | A separate, unmeasured discovery run with translation-layer logging switched on (Proton turns DXVK and vkd3d-proton logs off by default [shaders Q5]); never on a measured run | D3D11 games get DXVK knobs; D3D12 games get vkd3d-proton knobs. (Wilds is believed to be D3D12-only; **UNVERIFIED** in the notes) |
+| Graphics API | A separate, unmeasured discovery run with translation-layer logging switched on (Proton turns DXVK and vkd3d-proton logs off by default [shaders Q5]); never on a measured run. Log paths are pointed at `~/deckforge/logs` (`DXVK_LOG_PATH` and the Proton and vkd3d-proton equivalents), so nothing lands in the game folder | D3D11 games get DXVK knobs; D3D12 games get vkd3d-proton knobs. (Wilds is believed to be D3D12-only; **UNVERIFIED** in the notes) |
 | Upscalers shipped | DLLs in the install folder (DLSS, FSR 3.1, XeSS) | FSR 4 upgrade paths need FSR 3.1 or DLSS inputs [upscaling Q1, Q4] |
 | Anti-cheat | `EasyAntiCheat*/`, `BattlEye/`, `GameGuard/` folders, plus a curated denylist (Helldivers 2, Space Marine 2) | Forces Tier S only. Also warns loudly if injector files are found in an anti-cheat game's folder |
 | Steam Cloud | `userdata/<id>/<appid>/` cloud records (exact file **UNVERIFIED** [platform §4]) | A cloud-synced settings file can silently undo a change (safety spec Q7) |
@@ -76,10 +76,15 @@ DeckForge changes that game's environment variables by editing **its own** profi
 in `~/deckforge/profiles/`. It never edits Steam's `localconfig.vdf`, which Steam owns
 and rewrites (safety spec Q2). See decision **D4**.
 
-If the game already has a launch option, DeckForge shows it and records it first. Other
-wrappers chain after `df-run`, for example `~/deckforge/bin/df-run ~/fgmod/fgmod %command%`.
-Plain variables such as `FOO=1 %command%` move into the DeckForge profile. Nothing the
-player had is silently dropped.
+If the game already has a launch option, DeckForge shows it and records it first:
+- Plain variables such as `FOO=1 %command%` move into the DeckForge profile.
+- Other wrappers chain after `df-run`, for example
+  `~/deckforge/bin/df-run ~/fgmod/fgmod %command%`.
+- Exception: for anti-cheat games, `df-run` refuses to chain known injector wrappers
+  (`~/fgmod/fgmod`, `~/lsfg`). Anything they add happens after `df-run` hands over, out
+  of its control. DeckForge records them and asks the player instead.
+
+Nothing the player had is silently dropped.
 
 What `df-run` does, in order:
 
@@ -90,7 +95,11 @@ What `df-run` does, in order:
 3. Build the environment from the profile: `DXVK_CONFIG`, `VKD3D_CONFIG` (appended to,
    never replaced, because Proton adds to it too [shaders Q5]), `RADV_*`, and drirc
    options as variables. On measured runs it also switches MangoHud on (`MANGOHUD=1` plus
-   `MANGOHUD_CONFIGFILE`), except in anti-cheat games (see below).
+   `MANGOHUD_CONFIGFILE`; the switch name is from general knowledge, **UNVERIFIED**),
+   except in anti-cheat games (see below). A run counts as "measured" only when the bench
+   runner has written a one-shot run ticket for that App ID into
+   `~/deckforge/runs/`. `df-run` consumes the ticket, so normal play is never mistaken
+   for a measured run.
 4. For anti-cheat games, strip anything Tier I (for example DLL overrides or an
    injected layer's enable variable), whatever the profile says. Stripping variables may
    not be enough: lsfg-vk 2.0 can switch itself on by App ID in its own config
@@ -104,7 +113,8 @@ Design rules for `df-run`:
   - In normal play, a problem with DeckForge's own files makes `df-run` log the
     traceback with `logging.exception` to `~/deckforge/logs/df-run.log`, write a status
     file the UI shows, and launch the game with the **original arguments and the
-    untouched inherited environment**. Its own logging is best-effort.
+    untouched inherited environment**. Its own log and status-file writes are
+    best-effort: if they fail (for example, on a full disk), the game still launches.
   - On a **measured run**, the same problem aborts the run and records it as FAILED.
     A fallback launch would log frame times against a profile that was never applied:
     a wrong "done" (R1).
@@ -307,7 +317,8 @@ the gain is worth the upkeep.
 ## Proposed Milestone 1 scope
 
 Discover + safety + `df-run` + hand-made profiles for Wilds and Space Marine 2 + baseline
-logging. Search comes after the first baselines exist.
+logging for Wilds. The Space Marine 2 baseline waits on D8 / E17 (measuring it without
+an in-process layer). Search comes after the first baselines exist.
 
 Order of specs: `discover` (read-only, so lowest risk; it can be built and tested against
 fixtures while Fede answers Q1–Q7), then `safety`, then `df-run`.

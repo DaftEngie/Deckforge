@@ -21,7 +21,8 @@ Handheld Daemon and Handheld Companion are still open.
    30 fps on the Deck after its January 2026 patch, and Space Marine 2 at 20–30 fps
    (author-tested, no data published). No *measured* source shows either near 45, even
    with mods.
-2. **"60 with frame generation is ideal"** (your words when we set the target).
+2. **"60 with frame generation is ideal"** (your stated ideal when we set the target; the
+   written plan already keeps frame generation as a separate track).
    Near a 45 fps base, frame generation adds roughly 40–75 ms of input delay compared
    with native play using latency reduction, and at least 22 ms even in the best
    comparison. The Deck's whole measured button-to-screen time is 51–65 ms on the OLED.
@@ -44,11 +45,11 @@ Handheld Daemon and Handheld Companion are still open.
 
 | # | Option | What you get | Cost and risk | Verdict |
 |---|---|---|---|---|
-| A | **Current plan as written** (locked 45 native in every test game; frame gen to 60/90 as the ideal) | Clear target | Unreachable in both test games; frame gen breaks the latency goal | **Revise** (D1, D2) |
+| A | **Current plan** (locked 45 native in every test game; your stated ideal of 60 with frame gen) | Clear target | Unreachable in both test games; frame gen breaks the latency goal | **Revise** (D1, D2) |
 | B | **Native-first optimizer with honest verdicts** | Best measured native lock per game (45@90 → 40@80 → 30@90), or a clear "BLOCKED, here's why" | Same engineering as A, more honest | **Recommended core** |
 | C | **Latency-first:** measure and fix limiter and queue | Possibly the largest felt improvement, in every game including anti-cheat ones (Tier S) | A phone camera and an evening | **Do first, inside B** (E8) |
 | D | **Reconstruction-first:** best upscaler + mip bias + sharpening per game | Biggest visual gain at 800p | FSR 4 needs injection (Tier I) in most games today; about 20–27% of the frame budget | **Main visual lever inside B** (E9) |
-| E | **Cloud hybrid:** GeForce NOW for PS5-era games, plus a "route to cloud" verdict | High render settings at 60–90 fps, about double the battery life; anti-cheat stops being a Deck problem | US$9.99–19.99/month (Ultimate MXN 439/month in Mexico); 100 h cap; Helldivers 2 not listed (2025 data); **end-to-end latency and stream quality from Mexico City unmeasured** | **Test with a US$7.99 day pass** (E11, D6) |
+| E | **Cloud hybrid:** GeForce NOW for PS5-era games, plus a "route to cloud" verdict | High render settings at 60–90 fps, about double the battery life; anti-cheat stops being a Deck problem | US$9.99–19.99/month (Ultimate MXN 439/month in Mexico); 100 h cap; Helldivers 2 not listed; **end-to-end latency and stream quality from Mexico City unmeasured** | **Test with a US$7.99 day pass** (E11, D6) |
 | F | **Local streaming from your own PC** | Best stream quality, any game | No host today; Steam Machine from US$1,049, used PC about US$600–900 (estimate) | **Not now** |
 | G | **Deep tech:** Vulkan-layer per-pass budget changes, AI shader rewriting | Possibly gains settings can't reach | Months of work, debug-only hooks, update churn | **Research track**, gated on E1 and E7 data |
 | H | **Hardware hacks:** overclock, RAM overclock, Windows on the Deck | Little: GPU OC is capped near 1600 MHz, RAM OC showed nothing, SteamOS often beats Windows | Brick and warranty risk; loses the Linux toolchain | **No.** LAVD and TDP become search knobs inside B; undervolting stays a manual BIOS step for you |
