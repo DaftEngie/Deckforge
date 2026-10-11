@@ -1,7 +1,7 @@
 # Is a universal DeckForge worth building?
 
-Status: **PROPOSED decision document**, 2026-10-11. An independent verifier reviewed it (PASS WITH
-FIXES, 14 findings), and this version addresses them.
+Status: **PROPOSED decision document**, 2026-10-11. An independent verifier reviewed it twice
+(PASS WITH FIXES both times), and this version addresses both rounds of findings.
 
 It answers Fede's re-scoping message:
 
@@ -24,7 +24,8 @@ It answers Fede's re-scoping message:
 - `INVENTIONS.md` (PR #6);
 - `GOLD_HUNT_40FPS.md` (PR #7);
 - `STRATEGY_OPTIONS.md` (PR #2);
-- the Phase 1 scanner (PRs #3–#5, written and in review, not merged).
+- the Phase 1 scanner (PRs #3–#5, written and in review, not merged; #4 and #5 show a failing
+  dependency-review check because the repo's Dependency graph setting is off).
 
 **Labels:**
 - **(est.)**: my estimate or inference, not a measurement.
@@ -47,16 +48,18 @@ It answers Fede's re-scoping message:
 - QUALITY_TARGET.md already scores every setup against a reference: the same scene at *maximum*
   settings at native 800p. It uses per-frame (FLIP) and temporal metrics, then your blind A/B on
   the Deck.
-- I'd define **"High-equivalent"** as scoring at least as close to that reference as the game's own
-  High preset does (decision U7). That keeps the existing method and makes "on par with High"
-  measurable.
+- I'd define **"High-equivalent"** (decision U7) this way:
+  - at native 800p, with no upscaling and no frame generation;
+  - it scores at least as close to that reference as the game's own High preset does, within a
+    tolerance fixed in advance and over repeat captures;
+  - your blind A/B makes the final call, as QUALITY_TARGET.md already says.
 
 **Two readings:**
 - **Strict:** the literal High preset at native 800p.
 - **Perceptual:** looks like High on the 7-inch screen.
 
-The headline holds under both. 23 of the 35 sampled games (66%) either need upscaling just to
-reach about 30 fps at *Low*, or don't run at all (classes C, D and X below). No reading of "High at native 800p" rescues those.
+The headline holds under both. 23 of the 35 sampled games (66%) need upscaling just to reach
+about 30 fps at *Low* (class C), can't reach 30 even then (class D), or don't run (class X). No reading of "High at native 800p" rescues those.
 
 ## 2. The short answer
 
@@ -67,14 +70,16 @@ rendering on the Deck.
   Elden Ring and Armored Core VI.
   - Under the strict reading the count is 0–1. Elden Ring's result uses a mixed High/Medium/Low
     build, and Armored Core VI's may rely on dynamic resolution.
-  - Both also shipped on PS4, and both meet it without any tool [sample Q1, corrected].
+  - Both also shipped on PS4. Under the perceptual reading, both reach it without any tool
+    [sample Q1, corrected].
 - **None of the 26 games made only for current consoles is shown to meet it** [sample Q1].
-- **Smart settings gain about 0–8% over the High preset at the same look.** They gain 10–27% if you
-  accept a near-Medium look. This is based on two desktop games, so it is an estimate
-  [sample Q2].
+- **Smart settings gain about −8% to +8% over the High preset at the same look.** They gain 10–27%
+  if you accept a near-Medium look. This is my reading of the two desktop games in [sample Q2];
+  that note's own 5–25% summary mixes both kinds of build, so treat it as an estimate.
 - **What C and D games need.** Most need at least **~2–4× more speed just to drop the upscaler at
-  Low**, and more again to reach High. Several are limited by the CPU in crowds and hubs, where
-  fewer pixels don't help (est.) [sample Q1, Q4].
+  Low**, and more again to reach High (est.). This is from the 50–67% render scales in
+  [sample Q1]; that note's "1.5–4×" figure is a pixel ratio. Several games are limited by the CPU
+  in crowds and hubs, where fewer pixels don't help [sample Q4].
 
 **2. A smaller universal tool is feasible in parts, and we found no one who has built it.** It
 would:
@@ -90,7 +95,7 @@ settings look better than what people already use.
 
 **3. My recommendation:**
 - Don't build to the original bar.
-- First run a **cheap manual test** (no code, about two Deck evenings). It checks whether carefully
+- First run a **cheap manual test** (no code, about 3–4 Deck evenings). It checks whether carefully
   tuned settings visibly beat what Deck owners already have: the game's Deck defaults and Steam
   Deck HQ's hand-tuned settings.
 - Build only if that test passes. If it fails, stop and publish the research.
@@ -108,7 +113,7 @@ Classes [sample Q1]:
 | Class | Games | Share | What standalone DeckForge could do (est.) | With upscaling | With frame generation |
 |---|---|---|---|---|---|
 | **A** | Elden Ring, Armored Core VI | 2 (6%) | Already meets the perceptual bar; at best adds a little quality or headroom | 40+ likely (est.) | Smooth 60+ presented (est.) |
-| **B** | Elden Ring Nightreign, Kingdom Come II, Hogwarts Legacy (borderline), Ghost of Tsushima, RE4 remake, Lies of P | 6 (17%) | A same-look gain of 0–8% only helps a game already near 28 fps at High. Hogwarts needs about +50%, so not it | High-like at 30–40 plausible (est.) | Possible from a ~40 base |
+| **B** | Elden Ring Nightreign, Kingdom Come II, Hogwarts Legacy (borderline), Ghost of Tsushima, RE4 remake, Lies of P | 6 (17%) | A same-look gain of up to ~8% only helps a game already near 28 fps at High. Hogwarts needs about +50%, so not it | High-like at 30–40 plausible (est.) | Possible from a ~40 base |
 | **B/C** | God of War Ragnarök, 007 First Light, RE Requiem, Pragmata | 4 (11%) | Native High-like 30 **not measured**; unlikely (est.) | 30–60+ at a mixed look (measured, varies; Pragmata ~60 uncapped with FSR 3) | Possible |
 | **C** | Monster Hunter Wilds, Helldivers 2, Cyberpunk 2077, Black Myth: Wukong, Doom: The Dark Ages, FF XVI, FF VII Rebirth, AC Shadows, Clair Obscur, Silent Hill 2, Death Stranding 2, Onimusha | 12 (34%) | Native 30 at *any* quality: mostly no | ~30 at Low; the tool can only pick the best-looking Low mix | A smoother picture from a ~30 base, with a latency cost (see below) |
 | **D** | Space Marine 2, Starfield, Alan Wake 2, Dragon's Dogma 2, Stalker 2, Indiana Jones, Spider-Man 2, Horizon Forbidden West, Crimson Desert | 9 (26%) | No | Under 30 even at Low | Can't fix it, and several are CPU-bound in crowds and hubs |
@@ -116,7 +121,8 @@ Classes [sample Q1]:
 
 **Notes on the table:**
 - **Lies of P was originally classed A.** I checked the source: its ~50 fps was measured *with* FSR
-  2 Quality, so it moves to B. The sample note now carries that correction throughout.
+  2 Quality, so it moves to B. The sample note carries "[corrected]" markers wherever this
+  changed a count.
 - **Frame generation from a ~30 fps base.** Steam Deck HQ said frame generation "feels horrible"
   below 60 in Space Marine 2 [gold-engines §11]. That file is
   `docs/research/2026-10-11-gold-hunt/re_engine_swarm_low_end.md` on branch
@@ -181,15 +187,16 @@ None of these gets a game to High-like 30 on its own. Swap and zram tweaks measu
   files.
   - PUBG bans config edits that make "changes that cannot be made via the in-game settings menu".
   - Marvel Rivals began detecting and penalizing modified configs in July 2026.
-  - Penalties can arrive in later waves, and a ban on your account can't be undone.
+  - Penalties can arrive in later waves, and a ban on your account may be permanent.
 - **Proposed policy for online or anti-cheat games** (decision U8):
   - write only menu-reachable values;
   - write only to the game's own user-settings file, never the install folder, and never while the
     game runs;
   - no `Engine.ini` or console-style settings;
   - keep a "never touch" list, starting with Marvel Rivals;
-  - launch options from a **short allowed list only**: frame cap, resolution, and driver settings
-    shown to be harmless.
+  - launch options from a **short allowed list only**: frame cap, resolution, and driver settings.
+    I propose each entry with a stated reason it loads nothing into the game, and you approve the
+    list.
   - **Never** launch options that load anything into the game: Vulkan layers such as lsfg-vk,
     DLL-upgrade switches such as `PROTON_FSR4_UPGRADE`, or engine-settings switches.
   - CLAUDE.md lists all launch options as Tier S today. This proposal narrows that.
@@ -300,45 +307,61 @@ it, which leaves the large back catalogue open for years (est.).
    - then frame generation (the game's own in anti-cheat games), with its latency cost shown.
 3. **Stretch:** the same, at 35 or 40 where the game allows.
 
-**Step 0, a manual test before any building (decision U3).** About 2 weeks of calendar time and
-about 2 Deck evenings for you (est.):
+**Step 0, a manual test before any building (decision U3).** About 2–3 weeks of calendar time and
+about 3–4 Deck evenings for you (est.).
 
-- **What it tests:** whether careful tuning visibly beats what Deck owners already have. If it
-  can't, an automated tool can't either.
-- **No new code and no automated writes.** You change settings yourself in each game's menu, as
-  any player does. That adds no anti-cheat risk beyond normal play, so the test can include Space
-  Marine 2.
-- **Games:** 3–4 you own, ideally at least one each from classes A/B, C and D, plus Space Marine 2
-  for the anti-cheat case (decision U4).
-- **For each game, I prepare 3 settings sets:**
-  1. the game's Deck default;
-  2. Steam Deck HQ's settings, where they exist;
-  3. a tuned set from the research, plus 1–2 candidate variants to make sure it holds 30.
+**What it tests.** Whether careful tuning visibly beats what Deck owners already have.
+- Step 0 uses menu values only and a handful of variants, with no automated search.
+- A fail is therefore strong evidence, not proof: if careful hand-tuning can't win, an automated
+  tool is unlikely to (est.).
+
+**Ground rules:**
+- **No new code and no automated writes.** You change settings yourself in each game's menu, as any
+  player does, so there is no anti-cheat risk beyond normal play.
+- **Preference games:** 3 games you own that can hold a locked 30, upscaled if needed (classes B
+  and C; Monster Hunter Wilds counts as C). Class A games are left out because the expected result
+  is a tie.
+
+**For each preference game I prepare three settings sets, all locked at 30 fps:**
+1. the game's Deck default;
+2. Steam Deck HQ's settings, where they exist;
+3. a tuned set from the research, plus 1–2 variants in case the first doesn't hold 30.
+
+**How the comparison works:**
 - **Source-blind labels.** I label the sets with random letters. You see the values while entering
-  them, but not which source made each one; the key is revealed after you score.
-- **How you measure:** Steam's performance overlay confirms a locked 30 with no extra hitches. You
-  compare twice per game, in two scenes.
-- **Pass rule, fixed before testing:**
-  - in at least 3 of 4 games, you **clearly** prefer the tuned set over both the default and Steam
-    Deck HQ's set, in both scenes;
-  - frame-time stability is no worse;
-  - "slightly better" counts as a tie, and ties count as fails.
+  them, but not which source made each one; the key is revealed only after you score.
+- **Stability check.** With Steam's performance overlay showing the frame-time graph, count hitches
+  (spikes above 50 ms) over 2 minutes in each scene. The tuned set must have no more hitches than
+  the default.
+- **Repeats.** Compare twice per game, in two different scenes.
+
+**Pass rule, fixed before testing:**
+- In at least **2 of 3** games, you **clearly** prefer the tuned set over both the default and
+  Steam Deck HQ's set, in both scenes.
+- In no game is the tuned set clearly worse.
+- "Slightly better" counts as a tie, and ties count as fails.
+
+**Separate check (not part of the pass rule): Space Marine 2 and other class D games.**
+- Is the honest label right? That is, does the game really fail to hold 30 in hordes?
+- Do tuned settings give fewer hitches at its best stable frame rate?
+- This tests the "tell you plainly" half of the promise.
 
 **If Step 0 passes: build the minimum (Step 1).** That needs, in this order:
-1. the safety module (backups, atomic writes, manifest), whose spec in PR #1 is waiting for your
-   answers. CLAUDE.md R10 requires it before any write outside the repo.
-2. **a Deck test path you approve.**
+1. **The safety module** (backups, atomic writes, manifest). Its spec in PR #1 is waiting for your
+   answers, and CLAUDE.md R10 requires it before any write outside the repo.
+2. **A Deck test path you approve.**
    - CLAUDE.md R7 says only the bench runner drives the Deck.
-   - Agents may not edit `bench/` (R5), so you would either authorize a harness change or write
-     that part yourself with my help.
-3. the gamescope session change for frame-time capture, backed up and reversible.
-4. one Unreal adapter, two per-game adapters, guided mode, and the search loop, built test-first.
+   - R5 bars agents from `bench/`, so agents don't write the code that grades them.
+   - The options are an explicit exception you approve, recorded in `docs/ENFORCEMENT.md` and
+     checked by the verifier, or a human author for that part.
+3. **The gamescope session change** for frame-time capture, backed up and reversible.
+4. **The adapters and search loop:** one Unreal adapter, two per-game adapters, guided mode, and
+   the search loop, built test-first.
 
 That is roughly 4–8 weeks of agent work plus several Deck evenings (est.). The scanner work in PRs
 #3–#5 carries over once merged.
 
-**If Step 0 fails:** stop building. Publish the research, and consider contributing the method to
-DeckPacer or to settings guides instead.
+**If Step 0 fails:** stop building, and publish the research as it is.
 
 **Park:** shader surgery, REFramework work and in-process DeckWarp stay an optional research track
 for games without anti-cheat. They are not the product.
@@ -347,13 +370,13 @@ for games without anti-cheat. They are not the product.
 
 | # | Decision | Recommendation |
 |---|---|---|
-| **U1** | Accept that "High-like visuals at 30 fps standalone" is out of reach for most demanding games, and adopt the reframed promise (section 7). This replaces decision 0001's "locked 45 fps native" target with "locked 30 at best quality, with labels" | Yes |
+| **U1** | Accept that "High-like visuals at 30 fps standalone" is out of reach for most demanding games, and adopt the reframed promise (section 7). This replaces decision 0001's "locked 45 fps native" target with "locked 30 at best quality, with labels". The target files (CLAUDE.md, decision 0001, QUALITY_TARGET.md) keep saying 45 fps until they are updated after Step 0 | Yes |
 | **U2** | Make the product a universal, anti-cheat-safe "settings autopilot"; in-process inventions become optional research | Yes |
 | **U3** | Run Step 0 (the manual test) before building; build only if it passes, stop if it fails | Yes |
-| **U4** | Tell me which games you own beyond Wilds and Space Marine 2, so I can pick 3–4 across classes. Buying games would be outside the subscription-only budget in decision 0001 | Owned games first |
+| **U4** | Tell me which games you own beyond Wilds and Space Marine 2, so I can pick 2 more class B or C games for Step 0. Buying games would be outside the subscription-only budget in decision 0001 | Owned games first |
 | **U5** | Income: treat as a bonus; revisit after Step 0 (paid Steam build like Lossless Scaling, or Patreon) | Defer |
 | **U6** | Where they conflict, these decisions replace T1 (40 fps target, PR #7) and N1 ("automated Deck port team", PR #6) | Yes. I'll mark those docs superseded once you decide |
-| **U7** | "High-equivalent" = scores at least as close to the maximum-settings reference as the game's own High preset (keeps QUALITY_TARGET's method) | Yes |
+| **U7** | "High-equivalent" = native 800p with no upscaling or frame generation, scoring at least as close to the maximum-settings reference as the game's own High preset, within a preset tolerance over repeat captures, with your blind A/B as the final call (section 1) | Yes |
 | **U8** | Anti-cheat policy: menu-reachable values only, user-settings file only, an allowed list of launch options, a never-touch list. This narrows CLAUDE.md's "launch options are Tier S" | Yes |
 | **U9** | Alternative to building: contribute to DeckPacer, or publish guides, if Step 0 shows value but you'd rather not run a project | Decide after Step 0 |
 

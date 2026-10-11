@@ -156,7 +156,7 @@ Of 35 classified games, only 2 (about 6%) clear the owner's bar of roughly High 
 
 ### Inferences
 - **The bar is met only by games built for PS4-class hardware.**
-  - All three class A games are cross-gen titles from 2022–23. The PS4 platform lists come from my background knowledge; I did not source them in this pass.
+  - Both class A games are cross-gen titles from 2022–23 [corrected]. The PS4 platform lists come from my background knowledge; I did not source them in this pass.
   - Cross-gen games with a PS4 version: 9 classified, of which A = 2, B = 5, B/C = 1, D = 1 (Horizon Forbidden West) [corrected].
   - Current-gen-only games: 26 classified, of which A = 0, B = 1 (Kingdom Come: Deliverance II), B/C = 3, C = 12, D = 8, X = 2.
 - **Verified does not mean High.** At least five 2025–26 Verified games (Monster Hunter Wilds, Crimson Desert, Assassin's Creed Shadows, Clair Obscur, Doom: The Dark Ages) reach the badge with locked or lowest presets plus upscaling.
@@ -391,6 +391,6 @@ CPU limits are documented in crowds, hordes and dense hubs: Space Marine 2 battl
 | SDHQ, 21 Apr 2023 | Hogwarts on **Deck** | FSR 2 + tweaks on High; overclock + undervolt | — | ~+15% (cited); OC/UV +7% on High, +33% on Low | VRAM-limited stutter remains |
 | Digital Foundry, 2023–2025 | Horizon FW, Avatar, AC Shadows, Veilguard | Optimized ≈ console presets (PS5 High or Performance) | no percentages retrieved | no percentages retrieved | Equals the console look |
 
-**Bottom line for DeckForge.** A perceptual optimizer is worth about 5–25% over a game's High preset at the same look. The Deck's gap to native High at 30 is 0–25% only for the three class A games and possibly two or three class B cross-gen titles. For the other roughly 30 demanding games the gap is about 1.5–4x. The honest product verdict for most current-gen-only titles is therefore "best look at about 30 fps with an upscaler", or BLOCKED.
+**Bottom line for DeckForge.** A perceptual optimizer is worth about 5–25% over a game's High preset at the same look. The Deck's gap to native High at 30 is 0–25% only for the two class A games [corrected] and possibly two or three class B cross-gen titles. For the other roughly 30 demanding games the gap is about 1.5–4x. The honest product verdict for most current-gen-only titles is therefore "best look at about 30 fps with an upscaler", or BLOCKED.
 
 **Worth remembering for the DeckForge project:** in a sample of 35 demanding PC games from 2022–2026 (as of Oct 2026), only 2 met "High at native 800p and 30 fps" on the Deck: Elden Ring and Armored Core VI, both cross-gen PS4 titles [corrected]. No current-gen-only title did.
