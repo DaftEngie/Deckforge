@@ -3,7 +3,7 @@
 Status: **DRAFT for Fede's review**, 2026-10-11. No code yet.
 This document proposes; it does not change `CLAUDE.md`, `docs/QUALITY_TARGET.md` or the
 safety spec. Decisions it depends on are listed in
-[STRATEGY_OPTIONS.md](STRATEGY_OPTIONS.md) as D1–D7. The evidence and its sources are
+[STRATEGY_OPTIONS.md](STRATEGY_OPTIONS.md) as D1–D8. The evidence and its sources are
 summarized in [the overnight report](../research/2026-10-11-overnight/REPORT.md).
 
 Evidence: the overnight notes in `docs/research/2026-10-11-overnight/`, cited as
@@ -38,11 +38,11 @@ frame-rate lock, it says so and offers the next-best option: a lower lock, or cl
 |---|---|---|
 | Steam libraries (internal + SD card) | `~/.local/share/Steam/steamapps/libraryfolders.vdf` (path commonly known; **UNVERIFIED** in sources [platform §4]) | Find every install and every Proton prefix |
 | Installed games and **build ID** | `steamapps/appmanifest_<appid>.acf` (`buildid`, `installdir`; field names **UNVERIFIED**) | Every profile and measurement is keyed to the build |
-| Proton version per game | Steam `config/config.vdf` (compat tool mapping; **UNVERIFIED**) | Record only. Never switch automatically: a Proton change can trigger a 24 h Denuvo lockout [prior art §3] |
+| Proton version per game | Steam `config/config.vdf` (compat tool mapping; **UNVERIFIED**) | Record only. Never switch automatically: a user reported a Denuvo lockout (24 h) after a Proton change [prior art §3] |
 | Settings files in the prefix (Class P) | `steamapps/compatdata/<appid>/pfx/drive_c/users/steamuser/{AppData,Documents}`; Unity PlayerPrefs in `pfx/user.reg` [platform §4; levers: Unity] | Safest files to edit: Steam "verify" does not touch them |
-| Settings files in the install folder (Class I) | `steamapps/common/<installdir>/` — e.g. **Wilds' `config.ini` lives here** [levers: RE Engine] | Verify and updates revert them; anti-tamper may check them |
-| Engine | File signatures: Unreal (`*/Binaries/Win64/*-Shipping.exe`), Unity (`UnityPlayer.dll`, `*_Data/boot.config`), RE Engine (`re_chunk_000.pak` + `config.ini`) | Chooses the lever template |
-| Graphics API | Read from the first run's DXVK / vkd3d-proton logs rather than parsing the .exe | D3D11 games get DXVK knobs; D3D12 games get vkd3d-proton knobs |
+| Settings files in the install folder (Class I) | `steamapps/common/<installdir>/` — e.g. **Wilds' `config.ini` lives here** [levers: RE Engine] | Verify and updates can revert them (for Wilds' `config.ini` this is untested, E15); anti-tamper may check them |
+| Engine | File signatures: Unreal (`*/Binaries/Win64/*-Shipping.exe`), Unity (`UnityPlayer.dll`, `*_Data/boot.config`), RE Engine (`re_chunk_000.pak` + `config.ini`; the `.pak` name is **UNVERIFIED**, from general knowledge) | Chooses the lever template |
+| Graphics API | A separate, unmeasured discovery run with translation-layer logging switched on (Proton turns DXVK and vkd3d-proton logs off by default [shaders Q5]); never on a measured run | D3D11 games get DXVK knobs; D3D12 games get vkd3d-proton knobs. (Wilds is believed to be D3D12-only; **UNVERIFIED** in the notes) |
 | Upscalers shipped | DLLs in the install folder (DLSS, FSR 3.1, XeSS) | FSR 4 upgrade paths need FSR 3.1 or DLSS inputs [upscaling Q1, Q4] |
 | Anti-cheat | `EasyAntiCheat*/`, `BattlEye/`, `GameGuard/` folders, plus a curated denylist (Helldivers 2, Space Marine 2) | Forces Tier S only. Also warns loudly if injector files are found in an anti-cheat game's folder |
 | Steam Cloud | `userdata/<id>/<appid>/` cloud records (exact file **UNVERIFIED** [platform §4]) | A cloud-synced settings file can silently undo a change (safety spec Q7) |
@@ -76,6 +76,11 @@ DeckForge changes that game's environment variables by editing **its own** profi
 in `~/deckforge/profiles/`. It never edits Steam's `localconfig.vdf`, which Steam owns
 and rewrites (safety spec Q2). See decision **D4**.
 
+If the game already has a launch option, DeckForge shows it and records it first. Other
+wrappers chain after `df-run`, for example `~/deckforge/bin/df-run ~/fgmod/fgmod %command%`.
+Plain variables such as `FOO=1 %command%` move into the DeckForge profile. Nothing the
+player had is silently dropped.
+
 What `df-run` does, in order:
 
 1. Read `~/deckforge/profiles/<appid>.json`. No profile → launch the game unchanged.
@@ -83,32 +88,63 @@ What `df-run` does, in order:
    mark the profile **STALE**, launch with no file-dependent settings, and tell the
    player next time DeckForge opens.
 3. Build the environment from the profile: `DXVK_CONFIG`, `VKD3D_CONFIG` (appended to,
-   never replaced, because Proton adds to it too [shaders Q5]), `RADV_*`, drirc options as
-   variables, and `MANGOHUD_CONFIGFILE` during measured runs.
+   never replaced, because Proton adds to it too [shaders Q5]), `RADV_*`, and drirc
+   options as variables. On measured runs it also switches MangoHud on (`MANGOHUD=1` plus
+   `MANGOHUD_CONFIGFILE`), except in anti-cheat games (see below).
 4. For anti-cheat games, strip anything Tier I (for example DLL overrides or an
-   injected layer's enable variable), whatever the profile says.
-5. Replace itself with the game process (`os.execvpe` with an argument list; no shell,
-   per R11).
+   injected layer's enable variable), whatever the profile says. Stripping variables may
+   not be enough: lsfg-vk 2.0 can switch itself on by App ID in its own config
+   [prior art §2]. Discover therefore also checks that config, and warns if an
+   anti-cheat game is listed there.
+5. Replace itself with the game process, using an argument list and no shell (R11).
 
 Design rules for `df-run`:
 
-- **Fail open.** A broken optimizer must never stop a game from starting. On a problem
-  with its own files, it logs the full reason to `~/deckforge/logs/df-run.log`, writes a
-  status file the UI shows, and launches the game unmodified. This is one deliberate
-  top-level handler that records the error. It is not a silent catch-all, but it touches
-  R12, so it needs Fede's and the verifier's sign-off.
+- **Fail open for play, fail closed for measurement.**
+  - In normal play, a problem with DeckForge's own files makes `df-run` log the
+    traceback with `logging.exception` to `~/deckforge/logs/df-run.log`, write a status
+    file the UI shows, and launch the game with the **original arguments and the
+    untouched inherited environment**. Its own logging is best-effort.
+  - On a **measured run**, the same problem aborts the run and records it as FAILED.
+    A fallback launch would log frame times against a profile that was never applied:
+    a wrong "done" (R1).
+- **What fail-open cannot cover:** a missing or too-old system Python after a SteamOS
+  update, an import error, or a lost execute bit. The recovery is to delete the launch
+  option, and the UI and docs must say so. Before Milestone 1 closes, confirm `df-run`
+  runs on the system Python of the oldest SteamOS version DeckForge supports (version
+  **UNVERIFIED**).
+- **Lint and review gates:**
+  - The logic lives in a `.py` module under `src/`, so `ruff` and the tamper check apply.
+    `bin/df-run` is a two-line shell stub that only `exec`s that module with `"$@"`. It
+    must contain no Python logic: `ruff check .` skips files without a `.py` extension.
+  - The project's lint flags every `os.exec*` call (ruff S606), and adding `# noqa` is
+    blocked. That one module therefore needs a per-file ignore in `pyproject.toml`, a
+    protected file only Fede can change (decision **D4**).
+  - The top-level handler touches R12 and needs Fede's and the verifier's sign-off.
 - **Off switch:** delete the launch option, empty the profile, or set `DECKFORGE_OFF=1`.
-- **Small and boring:** standard-library Python only. The Deck setup script already
-  relies on the system Python.
+- **Small and boring:** standard-library Python only.
+
+**MangoHud and anti-cheat.** MangoHud also loads into the game as a Vulkan layer, the
+same reason lsfg-vk counts as Tier I. No MangoHud ban was found, but "not found" is not
+proof of safety [prior art §3]. Until Fede decides (**D8**), anti-cheat games (Space
+Marine 2, Helldivers 2) get no MangoHud on measured runs. Their frame times must come
+from outside the game process. Whether Steam's own performance overlay (mangoapp) can
+log without loading into the game is **UNVERIFIED** (E17).
 
 The baseline to beat is the game's own Deck defaults. Steamworks SDK 1.65 lets
-developers ship hardware-specific defaults that can change without a game patch
-[platform §6], so the baseline is re-measured whenever the build ID changes.
+developers ship hardware-specific defaults [platform §6]. Valve's notes frame these
+around future devices, and they could change without a new build ID. So the baseline is
+re-measured when the build ID changes **and** whenever discover sees the game's
+settings file change without DeckForge having written it.
 
-Baseline protocol: Game Mode only, since Desktop Mode has known performance gaps
-[platform §2]. Plugged in. Fixed scene: the Wilds Benchmark app for Wilds; a Space
-Marine 2 scene is still to be chosen. The first run warms the shader cache and is
-discarded.
+Baseline protocol:
+- Game Mode only, since Desktop Mode has known performance gaps [platform §2].
+- Plugged in.
+- Fixed scene: the Wilds Benchmark app for Wilds. It may not include the game's 2026
+  performance patches, so its numbers are checked against an in-game scene before they
+  are trusted. A Space Marine 2 scene is still to be chosen.
+- The first (cold) run is kept, but only to classify shader stutter (Stage 3). It is
+  excluded from frame-time statistics.
 
 ## Stage 3 — Diagnose
 
@@ -135,8 +171,8 @@ This is manual in Phases 1–2.
 |---|---|---|---|
 | In-game settings | Settings file (Class P), or the player sets the menu | S | Usually the largest effect |
 | Internal resolution + upscaler choice | In-game | S | Grid {400, 470, 533, 600, 640, 800}p [upscaling Q7] |
-| FSR 4 INT8 via OptiScaler / Decky Framegen | DLLs in the game folder | I | ~4.5 ms at 800p (community figure); another note estimates 6–11 ms. Must be measured (E9). Pin versions and check hashes [upscaling Q4] |
-| FSR 4 via the Proton-CachyOS upgrade (FSR 3.1 games) | Non-stock Proton (`FSR4_UPGRADE`; `PROTON_FSR4_UPGRADE` now only pins a version, see REPORT.md) | I until proven otherwise | Changing Proton can trip a Denuvo lockout |
+| FSR 4 INT8 via OptiScaler / Decky Framegen | DLLs in the game folder | I | ~4.5 ms at 800p (one user's figure; ~6 ms plausible). Must be measured (E9). Pin versions and check hashes [upscaling Q4] |
+| FSR 4 via the Proton-CachyOS upgrade (FSR 3.1 games) | Non-stock Proton (`FSR4_UPGRADE`; `PROTON_FSR4_UPGRADE` now only requests a version, see REPORT.md) | I until proven otherwise | A Proton change reportedly can trigger a Denuvo lockout; check the game's DRM first |
 | Sharpening | Steam/gamescope filter (S); OptiScaler RCAS (I) | S/I | Start at RCAS 0.2–0.4 or gamescope 2–5 [upscaling Q6] |
 | Texture LOD (mip) bias | `DXVK_CONFIG` `d3d11.samplerLodBias` (D3D9/11); OptiScaler override | S/I | A negative bias sharpens but costs bandwidth |
 | Anisotropic filtering | `RADV_TEX_ANISO` or DXVK `samplerAnisotropy` | S | Quality up, bandwidth cost |
@@ -144,7 +180,8 @@ This is manual in Phases 1–2.
 | Render-queue depth | `dxgi.maxFrameLatency=1` (D3D9/10/11 via DXVK) | S | Latency lever; no documented equivalent for D3D12 [latency §1] |
 | Frame cap + refresh | Steam per-game profile (Quick Access Menu) | S | 45@90 Hz, 40@80 Hz or 30@90 Hz. Always set the two together [platform §2] |
 | TDP, GPU clock, governor, scheduler (LAVD) | `steamosctl` (Valve's steamos-manager) | S | Steam's per-game profile may override at launch [platform §3] → Phase 1: recommend; the player sets it |
-| SMT off, CPU boost | sysfs, root needed | S | Deferred until the non-root route is known (E16) |
+| SMT off | sysfs, root needed; `steamosctl` has no SMT command [platform §3] | S | Deferred: needs a root decision from Fede, not just an experiment |
+| CPU boost | `steamosctl` | S | Whether it works without a password is E16 |
 | Shader compiler threads | `dxvk.numCompilerThreads` | S | Hitch-severity lever; untested [shaders Q1] |
 | Unreal ini CVars | `Saved/Config/Windows/Engine.ini` (Class P) | S | Small curated set; every CVar unverified until measured; tweak packs are placebo by default [levers: Unreal] |
 | Unity PlayerPrefs | Prefix `user.reg` (Class P) | S | Encoding **UNVERIFIED** [levers: Unity] |
@@ -238,13 +275,15 @@ the gain is worth the upkeep.
 - **45@90 Hz is the natural lock:** each frame shows on exactly two refreshes.
   40 fps needs 80 Hz; 30 fps sits on 90 Hz with three refreshes per frame.
 - **GPU clock tops out at 1600 MHz** on the OLED without risky hacks. A BIOS undervolt
-  (Valve firmware; the player does it) mostly saves power at the same fps
-  [alternatives §4].
+  (Valve firmware) mostly saves power at the same fps [alternatives §4]. It stays a
+  manual step for the player, never automated: stable values vary by unit, some units
+  freeze, and per the notes a CMOS reset no longer clears it.
 - **Scheduler:** A/B test LAVD in CPU-bound scenes. One reversible `steamosctl` call.
 - **Bandwidth:** if E1 shows bandwidth-bound passes, try positive LOD bias or lower
   texture settings first.
-- **Realistic total from hardware knobs: about 2–9%** [alternatives §4]. Settings and
-  reconstruction move far more.
+- **Realistic total from the knobs DeckForge would use: about 0–4%**
+  [alternatives §4, §6]. The 5–9% figures need overclocking, which is rejected. Settings
+  and reconstruction move far more.
 
 ## Where things run
 
@@ -276,7 +315,12 @@ fixtures while Fede answers Q1–Q7), then `safety`, then `df-run`.
 ## Open items to verify before coding
 
 - Steam file names and fields (library list, manifest, compat tool mapping, cloud
-  records). Copy a sanitized real tree from the Deck into `tests/fixtures/`.
+  records).
+  - **Fede** copies by hand only `libraryfolders.vdf`, two `.acf` files and the
+    `CompatToolMapping` block. No agent connects to the Deck (R7).
+  - Steam account IDs and user names are replaced before anything is committed; the
+    repo is public, and gitleaks does not catch Steam IDs.
+  - Fede reviews the files before they are committed.
 - Whether `steamosctl` works as the `deck` user without a password, and whether Steam's
   per-game profile overrides it (E16).
 - Unity `user.reg` encoding.
