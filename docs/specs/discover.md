@@ -230,7 +230,7 @@ Interface:
     inside `Binaries/Win64` or `Binaries/WinGDK`, anywhere within the depth limit.
   - **Unity:** `UnityPlayer.dll` at the install root or one level below; or a folder
     named `*_Data` at the root or one level below that contains `globalgamemanagers` or
-    `boot.config`.
+    `boot.config` (the evidence is the marker file's path).
   - **RE Engine:** `re_chunk_000.pak` at the install root.
   - No match → `"unknown"`; more than one engine → `"ambiguous"`.
 - **C3 Anti-cheat.** `anticheat` is `[{"system": str, "evidence": [str]}]`, one entry per
@@ -242,7 +242,8 @@ Interface:
 
   The prefix is also walked from `drive_c/Program Files` and
   `drive_c/Program Files (x86)` (depth 6) for the `easyanticheat` and `battleye`
-  signatures. Their evidence is written as `pfx/<relative path>`.
+  signatures. Their evidence is written as `pfx/<path relative to the prefix>`, for example
+  `pfx/drive_c/Program Files (x86)/EasyAntiCheat`.
 
   **Curated list:** `CURATED_ANTICHEAT = {2183900: "easyanticheat", 553850: "gameguard"}`
   is a module constant in `detect.py`. Phase 3 reuses it for R16. Each curated entry
@@ -283,6 +284,8 @@ Interface:
     `<prefix>/drive_c/users/steamuser/My Documents/My Games`.
   - A start folder that is a link is used only if its real path is inside the prefix's
     real path. A folder named `dosdevices` is never entered.
+  - Entries are de-duplicated by real path (Proton's `My Documents` is a link to
+    `Documents`); the first path in sorted order is kept.
   - Only file names are inspected; settings files are never opened.
 - **C7 Tier I eligibility.** `tier_i_eligible` is true only if **all** of the following
   hold:
