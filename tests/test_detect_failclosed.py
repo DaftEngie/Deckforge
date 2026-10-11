@@ -528,7 +528,7 @@ def test_c1_c7_a_link_or_other_device_in_a_program_files_walk_adds_not_entered(
         plant(hidden, ["EasyAntiCheat/", "BattlEye/"])
         link_to_folder(entry, hidden)
     elif case == "link-to-a-folder-inside-the-walk":
-        link_to_folder(entry, Path("..", "..", "Shared"))
+        link_to_folder(entry, Path("..", "Shared"))
     else:
         plant(entry, ["EasyAntiCheat/"])
         control = card_of(root)  # same device: the anti-cheat inside is seen
