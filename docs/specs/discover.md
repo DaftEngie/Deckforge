@@ -324,9 +324,13 @@ with Steam IDs replaced. No agent connects to the Deck.
 In Desktop Mode, with no game running and downloads paused:
 
 ```
+mkdir -p ~/deckforge
 cd ~/deckforge-repo && git pull
-PYTHONPATH=src python3 -m deckforge.discover --steam-root ~/.local/share/Steam > ~/deckforge/scan.json; echo "exit $?"
+PYTHONPATH=src python3 -B -m deckforge.discover --steam-root ~/.local/share/Steam > ~/deckforge/scan.json; echo "exit $?"
 ```
+
+(`-B` stops Python writing cache files into the checkout; `python3 --version` must be 3.11 or
+newer.)
 
 Expect `exit 0`. Then check:
 - Wilds shows `re_engine`, no anti-cheat, and `config.ini` as class `I`.
