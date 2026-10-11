@@ -1,7 +1,8 @@
 # Gold hunt: what could get Wilds and Space Marine 2 to 40 fps
 
 Status: **PROPOSED**, 2026-10-11. This is a catalog of techniques, not a plan of record. An
-independent verifier reviewed it and raised 22 findings, all fixed in this version.
+independent verifier raised 22 findings. Its re-check found 20 fixed and 2 partly fixed; the
+remaining wording issues were then corrected.
 
 It answers Fede's question: *"The target I want is 40 fps. What other techniques can better
 distribute resources to gain a couple more frames while keeping image quality good? Can we
@@ -51,7 +52,7 @@ Earlier work this builds on: `INVENTIONS.md` (PR #6, branch `design/native-inven
   - Scarlet Forest: mid-20s.
 - **18 February 2026.** Ver.1.041 added mesh LODs and cut CPU load [engines §5].
 - **July 2026.** A 9-minute Scarlet Forest hunt averaged just above 30 at the lowest settings, with
-  poor 1% and 0.1% lows [engines §5, checked]. The same area went from mid-20s to 30+. That hints
+  poor 1% and 0.1% lows [checked]. The same area went from mid-20s to 30+. That hints
   at a 15–25% improvement, though it is one test each (est.).
 - **21 August 2026.** Steam Deck Verified: "30 FPS and above most of the time" at default
   settings, with no area named and visuals that look "pixelated and blurry" [checked].
@@ -65,7 +66,7 @@ Earlier work this builds on: `INVENTIONS.md` (PR #6, branch `design/native-inven
 | Wilds, quieter field areas (mostly GPU-bound per Steam Deck HQ) | ~30 fps | **Possible only with Tier I levers *and* better-than-middle results** (section 8). Tier S alone: unlikely without lowering image quality |
 | Wilds, large open areas | Low-to-mid 20s (est.) | **Unlikely.** Needs 37–50% off the frame time |
 | Wilds, hubs such as the Grand Hub (CPU-bound) | No Deck number. An 8-core Zen 4 handheld drops to ~30 there [checked] | **Very unlikely.** The Deck's CPU is much weaker |
-| Space Marine 2, interiors and quiet sections | 20–30 fps on 2024 builds [engines §11]; ~24 dropping to 19 at the lowest settings [inv-cpu §2] | **Unlikely.** A forced 640×400 still couldn't hold 30 [inv-cpu §2], so resolution isn't the limit. Evidence supports 30 with dynamic resolution as the ceiling [engines §11]. Test Y6 decides |
+| Space Marine 2, interiors and quiet sections | 20–30 fps on 2024 builds [engines §11]; ~24 dropping to 19 at the lowest settings with FSR 2 Ultra Performance, not interior-specific; interiors were "higher" [inv-cpu §2] | **Unlikely.** A forced 640×400 still couldn't hold 30 [inv-cpu §2], so resolution isn't the limit. Evidence supports 30 with dynamic resolution as the ceiling [engines §11]. Test Y6 decides |
 | Space Marine 2, hordes (CPU-bound) | As low as 14 fps [inv-cpu §2]; 8-core consoles fall below 40 [engines §8] | **No** with Tier S tools |
 
 Per rule R1, the honest promise is narrower than "40 everywhere": aim for 40 in the quieter
@@ -118,7 +119,7 @@ variables, so they can go in a Steam launch option:
 | `VKD3D_SHADER_QUIRKS` | A text file mapping fingerprints (or ranges) to compile options, with no shader writing needed. In released v3.0/v3.0.1: wave size `FORCE_MAX_WAVE32` / `FORCE_MIN_WAVE32`, and tessellation caps `LIMIT_TESS_FACTORS_4…32`. Master only (not released): `DEBUG_FORCE_MIN_WAVE64`, `CLAMP_WAVE_SIZE_TO_THREAD_GROUP32` | [checked] master, v3.0, v3.0.1 |
 
 A user quirk file adds to vkd3d-proton's own built-in Wilds safety quirk and does not replace it
-(verifier, from source).
+(`vkd3d_shader_main.c` lines ~495–515).
 
 **Why this matters.** It turns "AI writes cheaper shaders" into a concrete, measurable loop:
 1. **Capture** a fixed scene on the Deck:
@@ -175,8 +176,9 @@ So the AI proposes *which constants to try*, and the harness decides. That match
 - RE Engine keeps its own `shader.cache2`. A RenoDX mod tells users to delete it when installing
   [shaders §6]. This needs checking for Wilds.
 - **Tier I, Wilds only.** These switches inject nothing into the game, but they change the code
-  the GPU runs. That is exactly what anti-cheat watches for. Never for Space Marine 2 or
-  Helldivers 2 (decision T3).
+  the GPU runs, which is the kind of change cheats rely on (for example, see-through walls).
+  Whether Easy Anti-Cheat on Proton would notice is unknown (no source), so we treat them as
+  Tier I either way. Never for Space Marine 2 or Helldivers 2 (decision T3).
 - **Prerequisite still open.** INVENTIONS section 4 lists Wilds as a Tier I candidate *pending a
   check of its anti-tamper and EULA*, which hasn't been done. Capcom has an anti-mod stance for
   ranked play [engines §5]. Desk task Y7 does this check before any Tier I test.
@@ -188,16 +190,17 @@ Proton (est.).
 
 ## 4. Gold nugget 2: driver switches meant not to change the image
 
-These change how the GPU driver lays out memory or schedules work, not the game's shader code.
-None of them is *meant* to change what is drawn. Still, Y1 includes an image check, because
-driver-level changes can expose game bugs. Each is a launch option, so it is free to try and free
+These change how the GPU driver lays out memory or schedules work, not the game's shader code
+(except `cswave32`, which is why it is Tier I). All but one are meant to leave the image
+unchanged. The unified-heap switch deliberately changes the game's texture budget. Y1 includes
+an image check anyway, because driver-level changes can expose game bugs. Each is a launch option, so it is free to try and free
 to undo.
 
 | Switch (launch option) | What it changes | Evidence | Expected (est.) |
 |---|---|---|---|
-| `radv_prefer_2d_swizzle_for_3d_storage=true` | Stores 3D compute textures (typical for volumetric fog) in a 2D memory layout | Option ships in Mesa 26.0 and 26.1. Any Mesa option can be set by an environment variable of the same name [checked]. Mesa's own code calls it "really just a heuristic" that depends on how the game reads the texture [checked]. Per-game uses: The Last of Us Part I (Mesa 26.2). Only on unreleased Mesa main: Ghost Recon Breakpoint's fog pass ("much faster") and Total War: ROME (+15%, a native Linux port, not a Proton game) [checked; verifier] | 0–5%, could be slower. Only matters if Wilds' fog uses 3D storage textures (likely, unproven) |
+| `radv_prefer_2d_swizzle_for_3d_storage=true` | Stores 3D compute textures (typical for volumetric fog) in a 2D memory layout | Option ships in Mesa 26.0 and 26.1. Any Mesa option can be set by an environment variable of the same name [checked]. Mesa's own code calls it "really just a heuristic" that depends on how the game reads the texture [checked]. Per-game uses: The Last of Us Part I (Mesa 26.2, `00-radv-defaults.conf` lines 269–271). Only on unreleased Mesa main: Ghost Recon Breakpoint's fog pass ("much faster") and Total War: ROME (+15%, a native Linux port, not a Proton game) [checked; verifier] | 0–5%, could be slower. Only matters if Wilds' fog uses 3D storage textures (likely, unproven) |
 | `VKD3D_CONFIG=single_queue` | Turns off async compute and puts all work on one queue | No Deck measurements. On an 8-unit, bandwidth-limited GPU, overlap may not help [bandwidth §5] | ±5% |
-| `VKD3D_CONFIG=no_staggered_submit` | Turns off a software scheduling trick that "may regress GPU performance in some cases" [bandwidth §5] | The code says staggering only happens with a single queue family or `single_queue`, so on a default Deck it probably does nothing (verifier, from source) | Test only together with `single_queue` |
+| `VKD3D_CONFIG=no_staggered_submit` | Turns off a software scheduling trick that "may regress GPU performance in some cases" [bandwidth §5] | The code says staggering only happens with a single queue family or `single_queue`, so on a default Deck it probably does nothing (`libs/vkd3d/command.c` lines 25310–25312) | Test only together with `single_queue` |
 | `radv_enable_unified_heap_on_apu=true` | Reports all shared memory as one GPU heap. That changes the game's texture budget, so textures may look different | Enabled for one game (RDR2) [bandwidth §4] | Texture quality and stutter, not fps |
 | `RADV_PERFTEST=cswave32` | Compiles every compute shader 32 threads wide instead of 64 | Wave32 gave +12.5% for ray tracing on desktop RDNA2 [shaders §3]. No game numbers for compute. Can break shaders that assume 64-wide groups [bandwidth §6] | ±5%. **Changes how shader code is compiled**, the same class as the quirk `FORCE_MAX_WAVE32`, so treated as **Tier I** (T3) |
 
@@ -264,7 +267,8 @@ significantly [engines §3].
 - **Expected effect:** better 1% lows rather than a higher average (est.).
 - **Cost and safety.** It writes roughly 17–37 GB of extra files into the game's install folder,
   depending on the tool [engines §4, inv-cpu §3]. That is a user-file write under R10; the undo is
-  Steam's "Verify integrity of game files".
+  Steam's "Verify integrity of game files". That probably restores replaced files but may not
+  delete added patch files, so freeing the disk space may need a manual step (unconfirmed).
 - This is INVENTIONS' "decompression routing" add-on (X8) in a simpler form.
 
 ## 6. CPU-bound scenes: hubs and hordes
@@ -276,7 +280,7 @@ with the GPU. The levers that remain:
 |---|---|---|---|
 | CPU tab ("frame skip" and small-creature cap, per community reports) | S | Wilds | Official tab; what each option does is unconfirmed and unmeasured [engines §5, §13] |
 | `ParallelBuildProcessorCount` 4–8 in `config.ini` | S | Wilds | "Same or slightly smoother, lower CPU load" at 4 on a Deck (claimed). Values above 8 hurt some users [engines §2] |
-| Newer Proton | S | Both | Proton Experimental is recommended for Wilds on the Deck [engines §5]. Newer vkd3d-proton *may* cut CPU overhead through opt-in descriptor heaps; no numbers are published [bandwidth §7] |
+| Newer Proton | S | Both | Proton Experimental is recommended for Wilds on the Deck [engines §5]. Newer vkd3d-proton *may* cut CPU overhead through opt-in descriptor heaps; no numbers are published [bandwidth §7]. If Y0 already runs on Proton Experimental, part of this gain is already in the baseline |
 | Power steering: cap the GPU clock so the CPU gets more of the 15 W | S | Both | INVENTIONS invention 3, test X3. In GPU-heavy scenes the CPU drops to 2–3 W [bandwidth §8]. Moving watts to the GPU in the field takes them away from the CPU, so the two directions conflict |
 
 **Scene-aware targets.** Doom Eternal on Switch ran cutscenes at 20 fps to look better
@@ -358,8 +362,8 @@ it gains less.
 
 **Wilds hubs (CPU-bound).**
 - **Starting point:** no Deck measurement. The evidence points to 30 fps or below: a much faster
-  handheld CPU drops to ~30 [checked], and a January Deck report puts large areas at ~25 or lower
-  [engines §5].
+  handheld CPU drops to ~30 there [checked]. (A January Deck report puts *large open areas* at
+  ~25 or lower [engines §5], but those are not hubs.)
 - **What 40 needs:** 25–40% off the CPU's time.
 - **What the levers might give:** four CPU levers (section 6), guessed at 5–10% each (none is
   measured), would give about 19–34% together.
@@ -421,9 +425,9 @@ by hand, or later by the bench runner, never from a dev session.
 | vkd3d-proton has a Wilds profile (sparse-tile and heap-robustness fixes; no compression changes) | `libs/vkd3d/device_workarounds.c` lines 160–164 and 659–667 |
 | `radv_prefer_2d_swizzle_for_3d_storage` exists in Mesa 26.0 and 26.1, not in 25.3 | Mesa 26.1 `src/amd/vulkan/radv_instance.c` lines 289–290. Effect and "heuristic" comment in `radv_image.c` lines 642–656 |
 | Any Mesa option can be overridden by an environment variable of the same name, even over drirc files | Mesa 26.1 `src/util/xmlconfig.c` lines 422–443 and 876 |
-| Mesa's per-game uses of the swizzle option | Mesa main `src/amd/vulkan/01-radv-performance.conf`: Ghost Recon Breakpoint (fog pass), Total War: ROME (+15%). TLOU1 in Mesa 26.2 (verifier) |
+| Mesa's per-game uses of the swizzle option | Mesa main `src/amd/vulkan/01-radv-performance.conf`: Ghost Recon Breakpoint (fog pass), Total War: ROME (+15%). TLOU1 in Mesa 26.2 `src/amd/vulkan/00-radv-defaults.conf` lines 269–271 |
 | Wilds Ver.1.040.03.01: CPU tab, fog 2 → 5 levels, VRS forced off during upscaling | [Capcom patch notes](https://info.monsterhunter.com/wilds/update/en-us/Ver.1.040.03.01.html) |
-| Wilds Playable in July 2026 (Scarlet Forest hunt averaging above 30 at lowest settings), then Verified on 21 Aug 2026 with "30 FPS and above most of the time" | [Steam Deck HQ, July](https://steamdeckhq.com/news/monster-hunter-wilds-is-technically-playable/); [Steam Deck HQ, August](https://steamdeckhq.com/news/monster-hunter-wilds-gets-steam-deck-verified/) |
+| Wilds got Valve's Playable badge in July 2026 (Steam Deck HQ headline: "technically playable"; a 9-minute Scarlet Forest hunt averaged above 30 at lowest settings), then Verified on 21 Aug 2026 with "30 FPS and above most of the time" | [Steam Deck HQ, July](https://steamdeckhq.com/news/monster-hunter-wilds-is-technically-playable/); [Steam Deck HQ, August](https://steamdeckhq.com/news/monster-hunter-wilds-gets-steam-deck-verified/) |
 | Legion Go S (Z1 Extreme), 29 Jan 2026: ~40 fps exploring and fighting, ~30 in CPU-heavy areas such as the Grand Hub | [TechRadar](https://www.techradar.com/gaming/pc-gaming/its-not-a-myth-capcom-has-fixed-monster-hunter-wilds-and-i-even-tested-it-to-find-out) |
 
 **Notes on the checks:**
