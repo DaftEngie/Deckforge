@@ -87,16 +87,12 @@ Labels used throughout: **[measured]** means a source measured it, **[claimed]**
   - Neither decompiles engine algorithms.
 
 ### Cited Findings
-- **[reported, 26 Feb 2026]** A news item named Wilds' protections as Denuvo plus "Capcom's proprietary Anti-Tamper." No bypass details are used here. — [GameGPU](https://en.gamegpu.com/news/igry/khakery-vzlamyli-denuvo-i-capcom-anti-tamper-v-monster-hunter-wilds)
+- **[checked by the lead, 12 Oct 2026]** The Steam store page states "Incorporates 3rd-party DRM: Denuvo Anti-tamper". Press also reports a separate Capcom anti-tamper layer. [Lead's note: the original citation here was a news item about cracking the protection; it has been removed so this note links no circumvention reporting.] — [Steam store](https://store.steampowered.com/app/2246340/Monster_Hunter_Wilds/)
 - **[claimed, user forum, no year shown]** A Steam thread, "Will the next update remove Denuvo?", assumes Denuvo is still present. Replies guess at removal "in 2 years." — [Steam discussion](https://steamcommunity.com/app/2246340/discussions/0/761806632715983858/)
 - **Capcom's 2026 Denuvo removals:**
   - **[reported]** Resident Evil 4 Remake: Denuvo removed, 3 Feb 2026. — [OC3D](https://overclock3d.net/news/software/capcom-removes-denuvo-from-its-resident-evil-4-remake/)
   - **[reported, inferred from the store page]** Dragon's Dogma 2: Denuvo "appears" removed, 2 Sep 2026. The page says nothing about Wilds' DRM status. — [GamingOnLinux](https://www.gamingonlinux.com/2026/09/dragons-dogma-2-gets-a-big-upgrade-and-denuvo-drm-removed/)
-- **[claimed, disputed, Mar 2025]** Community claims about Capcom's anti-tamper in Wilds:
-  - A reply attributed to the Special K developer says the packer is a third-party tool, Enigma Protector, and that part of Capcom's anti-tamper is called "CHECKSUMAPI."
-  - Other users dispute what is Denuvo and what is Capcom's own code.
-
-  Source: [Steam thread, 5 Mar 2025](https://steamcommunity.com/app/2246340/discussions/0/599646234919121475)
+- **[claimed, disputed, Mar 2025]** Community members disagree about which parts of Wilds' protection are Denuvo and which are Capcom's own anti-tamper. [Lead's note: internal component names from that thread were removed; they are not needed for this assessment.] — [Steam thread, 5 Mar 2025](https://steamcommunity.com/app/2246340/discussions/0/599646234919121475)
 - **[claimed, with a frametime screenshot]** praydog's March 2025 REFramework update fixed Wilds stutters and crashes that he attributed to Capcom's anti-tamper. DSOGaming's author guesses the stutters were not caused by Denuvo. — [DSOGaming, 5 Mar 2025](https://dsogaming.com/?p=186512); [Lowyat, 6 Mar 2025](https://lowyat.net/2025/344742/modder-fix-stuttering-issue-in-mh-wilds)
 - **[technical, 2021] How VMProtect 2 virtualization works:**
   - It turns native x86 code into a per-binary encrypted, stack-based bytecode, run by "handler" routines.
