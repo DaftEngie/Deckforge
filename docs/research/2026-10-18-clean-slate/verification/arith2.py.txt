@@ -1,0 +1,17 @@
+# Recompute CLEAN_SLATE_NATIVE.md rev 2, section 7 + lock arithmetic, using the doc's stated method (doc:353-365).
+def fps(ms): return 1000.0/ms
+V1=(0.03,0.10,0.20); SW=(0.0,0.015,0.04)
+for g,b in (("Wukong",54.0),("Stalker2",53.5),("Wilds",67.0)):
+    r=[b*(1-v)*(1-s) for v,s in zip(V1,SW)]
+    print(f"{g:9s} today {fps(b):5.2f} fps | pess/cent/opt {[round(fps(x),2) for x in r]} | gain x{[round(b/x,3) for x in r]}")
+print("Medium-plus 31.25 ms - 0.5/2.5/5 ->",[round(fps(31.25-s),2) for s in (0.5,2.5,5)])
+need=[31.7*r for r in (0.75,0.80,0.85)]
+print("avg frame time needed for p99<=31.7 at ratio .75/.80/.85:",[round(x,2) for x in need],
+      " saving needed:",[round(31.25-x,2) for x in need])
+for s in (0.5,2.5,5.0):
+    avg=31.25-s; print(f"  saving {s} ms: p99 by ratio",{r:round(avg/r,2) for r in (0.75,0.8,0.85)},"meets:",{r:avg/r<=31.7 for r in (0.75,0.8,0.85)})
+print("  central + XeSS 1.5 ms: p99 @0.85 =",round((31.25-2.5+1.5)/0.85,2))
+print("Itemised central (doc:237) sum 1+0.6+0.4+0.45 =",1+0.6+0.4+0.45, "; sweep 1.5% of 30.75 ms =",round(0.015*30.75,3))
+print("SM2 hordes 18 fps x 1.00/1.03/1.08/1.15 ->",[round(18*g,1) for g in (1,1.03,1.08,1.15)], "; avg 22 x1.15 =",round(22*1.15,1))
+print("LPC worst-1% 70-73 -> 47 ms improvement:",[round(1-47/x,3) for x in (70,73)])
+print("Schedule days: 1h+evening+1h+4d+7d+7d =",round(1/24+0.5+1/24+4+7+7,2),"days =",round((1/24+0.5+1/24+18)/7,2),"weeks")
