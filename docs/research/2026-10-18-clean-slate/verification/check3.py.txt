@@ -1,0 +1,13 @@
+# Round-3 checks of CLEAN_SLATE_NATIVE.md rev 3 (e018ca0)
+avg = 1000/32  # 31.25 ms, doc:40
+print("35-37 fps claim (doc:351): 31.25-3 ->", round(1000/(avg-3),2), " 31.25-4 ->", round(1000/(avg-4),2))
+print("W1:119 own items 2+0.6+0.5 =", 2+0.6+0.5, "ms ->", round(1000/(avg-3.1),2), "fps")
+print("upper-bound row 0.5/2.5/5 ->", [round(1000/(avg-s),2) for s in (0.5,2.5,5)])
+need = {r: round(avg-31.7*r,2) for r in (0.75,0.80,0.85,0.90)}
+print("saving needed by low/avg ratio:", need, "(doc:369 4.3-7.5; doc:371 ~2.7 at 0.90)")
+# Measured benchmark-tool data in doc:40: avg 32 fps, 5th-percentile low 28 fps.
+r5 = 28/32
+print("measured 5th-pct low/avg ratio in the benchmark tool:", r5, "-> 1% ratio is <= this, so 0.90 is already ruled out")
+print("bar at ratio <= 0.875: saving >=", round(avg-31.7*r5,2), "ms (vs doc's ~2.7)")
+print("central 2.5 meets benchmark bar at 0.90?", 2.5 >= need[0.90], "; at 0.875?", 2.5 >= avg-31.7*r5)
+print("note's 4 ms meets 0.85 bar?", 4 >= need[0.85], "; 5 ms?", 5 >= need[0.85], "; 5 ms at 0.80?", 5 >= need[0.80])

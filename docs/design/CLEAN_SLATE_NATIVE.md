@@ -2,7 +2,7 @@
 
 - **Status:** research result, not a build plan.
 - **Measured on a Deck by this project:** nothing.
-- **Date:** 2026-10-18 (revision 3, after two independent verifier FAILs; see `verification/`).
+- **Date:** 2026-10-18 (revision 4, after three independent verifier rounds; see `verification/`).
 - **Evidence:** the raw notes are in `docs/research/2026-10-18-clean-slate/`, indexed in its `README.md`. References like `round2/C_sched_power.md:15` point into that folder.
 
 ---
@@ -39,7 +39,7 @@ By the six-part test in section 6, the loop ended with **one viable idea, two co
 Per game:
 - **Black Myth: Wukong** is the closest. In August 2024 a user measured it at 32 fps average and 28 fps at the 5th-percentile low, using Medium settings with FSR at a 50% render scale on an OLED Deck, in the game's frozen benchmark tool.
   - For a clean 30 lock, each frame must get about 4.3–7.5 ms faster (est.).
-  - The best estimate in the notes for V1's saving at this look is 3–4 ms (`round3/W1_perceived_high.md:119`). My own itemisation gives 0.5 / 2.5 / 5 ms, and that is an upper bound, because the knobs overlap.
+  - The highest estimate in the notes for V1's saving at this look is 3–4 ms (`round3/W1_perceived_high.md:119`). Its items add to 3.1 ms, and round 4 trimmed its mip-bias piece (`round4/R4_gpu_perception.md:242`). My own itemisation gives 0.5 / 2.5 / 5 ms. Both add up overlapping knobs, so both probably run high.
   - So on paper the lock is **borderline to unlikely**. It needs the bench to beat the paper, and the lock must be shown in gameplay, not only in the benchmark tool.
   - Whether that "Medium-plus" look counts as High-like is for a blind panel to say. Nobody has tested it.
   - "Medium-plus" means the Medium preset with targeted upgrades and better reconstruction, tuned to look as close to High as possible.
@@ -79,7 +79,7 @@ He also received the rewritten prompt. It became the shared brief, `00_brief_rou
 | 2 | 7 | One sceptic per cluster; an anti-cheat, legal and maintenance reviewer; a baseline and stacking analyst | Verdicts, corrected budgets, measured baselines |
 | 3 | 4 | Vision science and QA panels; UE5/RE Engine/Northlight engine programming; CPU profiling; ecosystem and upstream | Ideas aimed at five walls |
 | 4 | 2 | New sceptics, given the notes but not the author's conversation | Verdicts on the round-3 ideas |
-| check | 2 | Verifiers with fresh context | Revision 1: FAIL, 13 findings (`verification/verifier_round1.md`). Revision 2: FAIL, 11 findings (`verification/verifier_round2.md`). Revision 3 addresses them; its re-check result is below. |
+| check | 2 | Verifiers with fresh context | Revision 1: FAIL, 13 findings (`verification/verifier_round1.md`). Revision 2: FAIL, 11 findings (`verification/verifier_round2.md`). Revision 3: PASS WITH FIXES, 5 findings (`verification/verifier_round3.md`). Revision 4 applies them, and has not been re-checked. |
 
 **Rules every agent followed:**
 - no DRM, anti-tamper or anti-cheat circumvention;
@@ -238,14 +238,14 @@ So the next useful iteration of the loop is empirical (§9). Another paper round
 |---|---|---|---|
 | Against the nearest stock preset at equal look (`round2/E_F_search_autotune.md:37`) | 3% | 8–12% | 20% |
 | Against the best existing human Deck guide | 0% | 0–5% | 10% |
-| Medium-plus Wukong. The note's own itemisation is 3–4 ms in total (`round3/W1_perceived_high.md:119`). My estimate sums Lumen budgets (~1 ms, half of `round2/B_H_amortization_gi.md:42`), split reconstruction 0.6 and FSR mip bias 0.4 (`round4/R4_gpu_perception.md:48,132`) and the driver sweep 0.45. That is an **upper bound**, because these knobs overlap. | 0.5 ms | 2.5 ms | 5 ms |
+| Medium-plus Wukong. The note's own itemisation is 3–4 ms in total (`round3/W1_perceived_high.md:119`). My estimate sums Lumen budgets (~1 ms, half of `round2/B_H_amortization_gi.md:42`), split reconstruction 0.6 and FSR mip bias 0.4 (`round4/R4_gpu_perception.md:50,132`) and the driver sweep 0.45. These knobs overlap, so **my estimate is likely high**. | 0.5 ms | 2.5 ms | 5 ms |
 
 **Where it's aimed.**
 - **Wukong:** it has a free, deterministic benchmark tool, and Medium/50% is the closest to a lock. Subject to §3, decision 7.
 - **Stalker 2:** the alternative lead.
 - **Space Marine 2:** raise its GPU settings up to the CPU-bound line. Its game settings file is current Tier S. Risk is low (est.), pending Focus/Saber's answer, because its "Mods Detected" gate could misfire on config edits (`round2/X_anticheat_legal_maint.md:170`).
 
-**Judges.**
+**Judges.** V1 as an idea is judged by its own test: at equal Deck ms, it must beat the nearest stock preset by ≥0.3 JOD with ≥58% panel preference (`round2/E_F_search_autotune.md:112-113`). That comparison is in §9 step 5. The Wukong lock in step 4 is a separate, harder target. The judges for both:
 - Frame time: at least 5 runs, 95% confidence intervals, against the locked-30 definition in §3, decision 2.
 - Look: the pre-registered panel (§3, decision 5).
 - ColorVideoVDP, with a measured Deck display model, plus CGVQM: these only *rank* candidates.
@@ -348,13 +348,15 @@ This targets stutter, not the gap to High. The GPU-bound pessimistic case would 
 
 | Game | High-like today | V1 + driver sweep at a High-preset look (pess / central / opt) | Medium-plus route | What could close the rest | Tier notes |
 |---|---|---|---|---|---|
-| Black Myth: Wukong | ~18.5 fps | 19.1 / 20.9 / 24.1 fps | Measured 32 avg / 28 at the 5th-percentile low at Medium/50%. After V1: 35–37 fps average on the note's 3–4 ms estimate, and 32.5 / 34.8 / 38.1 fps on my upper-bound estimate. **Borderline to unlikely lock** on paper (below). | A panel accepting Medium-plus, plus the bench beating the paper estimate | Settings files; EULA §8.3 (§3, decision 7) |
+| Black Myth: Wukong | ~18.5 fps | 19.1 / 20.9 / 24.1 fps | Measured 32 avg / 28 at the 5th-percentile low at Medium/50%. After V1: 35–37 fps average on the note's 3–4 ms estimate, and 32.5 / 34.8 / 38.1 fps on my estimate (likely high). **Borderline to unlikely lock** on paper (below). | A panel accepting Medium-plus, plus the bench beating the paper estimate | Settings files; EULA §8.3 (§3, decision 7) |
 | Stalker 2 (v2.0, UE 5.5.4) | ~18.7 fps | 19.3 / 21.1 / 24.3 fps | Unknown: no v2.0 Deck measurement | Measure first; CPU column for settlements | No anti-cheat; Tier I possible |
 | Monster Hunter Wilds | ~15 fps | About 15.4 fps. Only the 3% pessimistic case applies: the central and optimistic cases assume UE-style cvars Wilds doesn't have (`round2/E_F_search_autotune.md:31`). | Verified "30 and above most of the time" at defaults; plains below 20 | Long shot: a Capcom handheld tier at a below-High look (V3) | Menu only; Tier I dead |
 | Space Marine 2 | ~22 fps average. Hordes: drops to 14 fps seen at launch (one review); ~18 in the worst hordes by PS5 scaling (est.); current figure unmeasured. | Near-High graphics at today's fps, if the CPU limit is simulation. Hordes 0 / +3 / +15% for the whole V2 stack (the GPU pin alone is 0 / +3 / +8%), pending §3.6 and §3.8. | n/a | Saber's 4-core swarm budget (V3) | Easy Anti-Cheat |
 | Alan Wake 2 | ~11 fps | ~11 fps (the non-mesh-shader probe is −3 / 0 / +2 ms) | n/a | Not reachable with these levers | No anti-cheat (Epic store) |
 
-**How these were computed** (my arithmetic, est.). The round-2 verifier recomputed every row independently and got the same figures (`verification/arith2.py.txt`, `verification/verifier_round2.md`).
+**How these were computed** (my arithmetic, est.). The verifiers recomputed every row independently and got the same figures:
+- `verification/arith2.py.txt` and `verifier_round2.md` checked the rows;
+- `verification/check3.py.txt` and `verifier_round3.md` checked the 35–37 fps figure and the benchmark-tool bar.
 
 High-preset look:
 - frame time = baseline × (1 − V1 %) × (1 − driver-sweep %);
@@ -365,10 +367,13 @@ High-preset look:
 - the CPU levers add about 0 here because these scenes are GPU-bound.
 
 Medium-plus Wukong:
-- 31.25 ms measured, minus either the note's 3–4 ms, or my upper-bound 0.5 / 2.5 / 5 ms.
+- 31.25 ms measured, minus either the note's 3–4 ms or my estimate of 0.5 / 2.5 / 5 ms (likely high).
 - A locked 30 under the §3.2 definition needs an uncapped p99 of 31.7 ms or less. In gameplay, 1% lows run 0.75–0.85× the average (`round2/baselines_stack.md`), so that needs an average frame time of about 23.8–26.9 ms. That is a saving of about 4.3–7.5 ms.
-- The note's best 4 ms falls just short of even the easy end, 4.3 ms. My upper-bound 5 ms reaches it only when 1% lows are good (ratio 0.85) (`verification/arith2.py.txt`).
-- **Benchmark tool versus gameplay.** In the benchmark tool, lows run about 0.90× the average (`round2/baselines_stack.md:104`, "optimistic"). There the bar drops to about 2.7 ms. So a lock shown only in the benchmark tool is provisional; gameplay decides.
+- The note's top figure, 4 ms, falls just short of even the easy end, 4.3 ms. My 5 ms reaches it only when 1% lows are good (ratio 0.85) (`verification/arith2.py.txt`).
+- **Benchmark tool versus gameplay.**
+  - A note puts lows at about 0.90× the average in the benchmark tool (`round2/baselines_stack.md:104`, "optimistic"). At that ratio the bar would be about 2.7 ms.
+  - But the measured 28 fps at the 5th percentile against a 32 fps average already puts the ratio at or below 0.875. That makes the bar about 3.5 ms or more (`verification/check3.py.txt`).
+  - Either way, a lock shown only in the benchmark tool is provisional. Gameplay decides.
 - If XeSS is needed to pass the panel, it costs about 1.5 ms more (est.), which makes this harder.
 
 The baselines are estimates. §9 step 1 replaces them with measurements.
@@ -440,8 +445,13 @@ The baselines are estimates. §9 step 1 replaces them with measurements.
    - **Pass:** the locked-30 definition from §3 decision 2, measured directly at Medium-plus in pre-registered gameplay scenes (in practice, a saving of at least about 4.3 ms), with no more than 0.25 JOD loss on the metric screen.
      - A pass in the benchmark tool alone is labelled provisional, because its lows run about 0.90× (`round2/baselines_stack.md:104`).
    - **Kill:** less than 2 ms saved.
+   - **Between 2 and 4.3 ms saved:** V1 survives as a profile idea, but not as the Wukong lock. Judge it on its own test in step 5.
 5. **Panel pilot** (manual, in parallel; needs §3 decision 5).
-   - 8 observers; Wukong clips of High vs Medium-plus, plus High-vs-Low and High-vs-High controls.
+   - 8 observers.
+   - Wukong clip pairs:
+     - High vs Medium-plus;
+     - **stock Medium vs the V1 candidate at equal Deck ms**: this is V1's own test, which passes at ≥0.3 JOD and ≥58% preference;
+     - controls: High vs Low, and High vs High.
    - **Instrument kill:** High vs Low below 1 JOD, or High vs High outside 40–60%.
    - Then the 12×16×2 confirmatory panel, which Fede does not sit in.
 6. **V2 bundle** (needs bench runner, 1 week).
@@ -485,4 +495,4 @@ The panel's reference frames are rendered on his Windows PC and stay on his mach
   - the Wukong EULA's §2.2, §8.2(4) and §8.3 text.
 - **Not every source could be reached.** Some agents couldn't reach gitlab.freedesktop.org or some publisher sites; those items are marked [could not verify]. Local source copies the agents cite were temporary; the citations point to upstream commits and URLs.
 - **Legal readings are cautious readings, not legal advice.** "Safe-likely" anti-cheat verdicts are inferences. The only way to be sure is the vendor's written answer, never a test on an account.
-- **The notes are model output and contain errors.** Each review round found several errors in the round before it, and the verifier found 13 in revision 1 of this document. Treat every number as a hypothesis for the bench.
+- **The notes are model output and contain errors.** Each review round found several errors in the round before it, and the verifiers found 13 errors in revision 1 of this document, 11 in revision 2 and 5 in revision 3. Treat every number as a hypothesis for the bench.
