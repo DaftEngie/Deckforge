@@ -2,7 +2,7 @@
 
 - **Status:** research result, not a build plan.
 - **Measured on a Deck by this project:** nothing.
-- **Date:** 2026-10-18 (revision 2, after an independent verifier's FAIL; see `verification/verifier_round1.md`).
+- **Date:** 2026-10-18 (revision 3, after two independent verifier FAILs; see `verification/`).
 - **Evidence:** the raw notes are in `docs/research/2026-10-18-clean-slate/`, indexed in its `README.md`. References like `round2/C_sched_power.md:15` point into that folder.
 
 ---
@@ -23,23 +23,24 @@
 
 A separate verifier then checked this document against all the notes.
 
-**Results.** "Viable" here means worth a two-week bench test. It does not mean "works": nothing has been tried yet.
+**Results.** "Viable" here means worth a two-week bench test. It does not mean "works": nothing has been tried yet. "Conditional" means worth trying, but the idea fails one part of its own test (named in the table).
 
 By the six-part test in section 6, the loop ended with **one viable idea, two conditional ones and one complementary track**. That is **short of the three that were asked for.** Section 6 says why the loop stopped there.
 
 | # | Idea | What it does | Status | Anti-cheat games? |
 |---|---|---|---|---|
-| V1 | **Deck "perceived-High" profiles** | Per-game settings and config-file profiles, found by measuring on a Deck and judged by a blind panel on the Deck's own screen | **Viable** | Likely, since it touches in-game settings files only. Unconfirmed: vendor not yet asked. |
-| V2 | **Stutter kit** | CPU power mode, scheduler fix and a BIOS undervolt you set yourself, all from outside the game | **Conditional**: its expected gain is below its own pass bar | Not until the vendor answers in writing and you decide on the tier change (§3) |
-| V3 | **Upstream and publisher evidence channel** | Turns bench measurements into fixes that Valve, Mesa, Proton and publishers ship | **Conditional**: a channel, not something a 2-week measurement can judge | Yes, since nothing runs on the Deck |
+| V1 | **Deck "perceived-High" profiles** | Per-game settings and config-file profiles, found by measuring on a Deck and judged by a blind panel on the Deck's own screen | **Viable** as an idea: its central estimate meets its own test. It is **not** expected to deliver the harder Wukong 30-lock target. | Likely, since it touches in-game settings files only. Unconfirmed: vendor not yet asked. |
+| V2 | **Stutter kit** | CPU power mode, scheduler fix, and a BIOS undervolt you set yourself, all from outside the game. If the undervolt is set too low, it can silently corrupt saves. | **Conditional**: worth one test, but its central gain is below its own pass bar | Not until the vendor answers in writing and you decide on the tier change (§3) |
+| V3 | **Upstream and publisher evidence channel** | Turns bench measurements into fixes that Valve, Mesa, Proton and publishers ship | **Conditional**: worth doing, but success depends on maintainers acting, which no 2-week measurement can judge | Yes, since nothing runs on the Deck |
 | V4 | Smoothness track | Camera re-aiming between frames, plus frame generation on top of a native 30 | Complementary: it never counts toward native fps | Re-aiming only if built into gamescope; frame generation (lsfg-vk) no |
 
 **The honest ceiling.** No target game reaches a locked 30 fps natively at the High preset, and none reaches 45 fps at a High-like look. That holds even at the optimistic estimate.
 
 Per game:
 - **Black Myth: Wukong** is the closest. In August 2024 a user measured it at 32 fps average and 28 fps at the 5th-percentile low, using Medium settings with FSR at a 50% render scale on an OLED Deck, in the game's frozen benchmark tool.
-  - A clean 30 lock needs about 4.3–7.5 ms more per frame (est.). V1 is estimated to save 0.5 / 2.5 / 5 ms (pessimistic / central / optimistic).
-  - So the lock is **borderline**: it holds only if V1 lands near its best case.
+  - For a clean 30 lock, each frame must get about 4.3–7.5 ms faster (est.).
+  - The best estimate in the notes for V1's saving at this look is 3–4 ms (`round3/W1_perceived_high.md:119`). My own itemisation gives 0.5 / 2.5 / 5 ms, and that is an upper bound, because the knobs overlap.
+  - So on paper the lock is **borderline to unlikely**. It needs the bench to beat the paper, and the lock must be shown in gameplay, not only in the benchmark tool.
   - Whether that "Medium-plus" look counts as High-like is for a blind panel to say. Nobody has tested it.
   - "Medium-plus" means the Medium preset with targeted upgrades and better reconstruction, tuned to look as close to High as possible.
 - **Stalker 2:** unknown. No Deck measurement of the current version (v2.0) exists.
@@ -78,7 +79,7 @@ He also received the rewritten prompt. It became the shared brief, `00_brief_rou
 | 2 | 7 | One sceptic per cluster; an anti-cheat, legal and maintenance reviewer; a baseline and stacking analyst | Verdicts, corrected budgets, measured baselines |
 | 3 | 4 | Vision science and QA panels; UE5/RE Engine/Northlight engine programming; CPU profiling; ecosystem and upstream | Ideas aimed at five walls |
 | 4 | 2 | New sceptics, given the notes but not the author's conversation | Verdicts on the round-3 ideas |
-| check | 1 | Verifier with fresh context | FAIL with 13 findings, all addressed in this revision |
+| check | 2 | Verifiers with fresh context | Revision 1: FAIL, 13 findings (`verification/verifier_round1.md`). Revision 2: FAIL, 11 findings (`verification/verifier_round2.md`). Revision 3 addresses them; its re-check result is below. |
 
 **Rules every agent followed:**
 - no DRM, anti-tamper or anti-cheat circumvention;
@@ -110,7 +111,7 @@ The repository and the conversation currently hold different targets:
 2. **Which frame target: a locked-30 floor or a 45 fps median?**
    - This study uses "locked 30" as defined in `round4/R4_gpu_perception.md:196`: at most 1% missed presents at a 30 cap, or an uncapped p99 of 31.7 ms or less.
 3. **Which High is the reference?** The options are the High preset at native 100% render scale, High at 67%, or max settings (QUALITY_TARGET).
-   - The perception note uses native 100% (`round3/W1_perceived_high.md:16`). The baselines use 67%.
+   - The perception note uses native 100% (`round3/W1_perceived_high.md:26`). The baselines use 67%.
 4. **Does "not reliably preferred over High" count as meeting the look target?**
    - Proposed test: in a pre-registered blind panel, the upper bound on the share preferring High is at most 63% (0.5 JOD). This is the label from `round4/R4_gpu_perception.md:196`.
    - It is weaker than "indistinguishable", which needs about 155 two-alternative trials (`round3/W1_perceived_high.md:20`).
@@ -158,7 +159,10 @@ Most round-1 ideas turned out to be already shipped, already done inside the eng
   - TSR on a Deck measured about 2.6 ms at 360p→720p (an Epic forum post by a developer optimising for the Deck; model unstated). That suggests about 2.0–2.9 ms at 800p.
   - Whether the round-2 High-like baselines already include that cost is unconfirmed (`verification/verifier_round1.md`, "Unconfirmed").
 - **W3: CPU-bound scenes.**
-  - Space Marine 2 hordes are limited by core count. The worst hordes run about 18 fps on a Deck, scaled from the PS5 (est.). S0/S1 levers reach about 1.15× at best (`round4/R4_cpu_ecosystem.md`, SM2 verdict).
+  - Space Marine 2 hordes are limited by core count.
+    - A launch-week Deck review saw drops to 14 fps (`round2/baselines_stack.md:33`). Round 4 calls that one anecdote.
+    - Scaling from the PS5 suggests about 18 fps in the worst hordes (est.). Current horde fps has not been measured.
+    - S0/S1 levers reach about 1.15× at best (`round4/R4_cpu_ecosystem.md`, SM2 verdict).
   - Stalker 2 settlements are CPU-bound on PC.
   - The two round-3 notes disagree on whether the Wilds plains are CPU- or GPU-bound. §9 step 6 settles it.
 - **W4: reconstruction without matrix cores.**
@@ -190,7 +194,7 @@ Most round-1 ideas turned out to be already shipped, already done inside the eng
 
 | | 1 new | 2 reviewed | 3 legal/tier | 4 gain | 5 test | 6 maintainable | Result |
 |---|---|---|---|---|---|---|---|
-| V1 | ✓ | ✓ (R2, R4) | ✓ for settings files; Wukong contract caveat | ✓ ~10% (below the gap to High) | ✓ | ✓ | **Viable** |
+| V1 | ✓ | ✓ (R2, R4) | ✓ for settings files; Wukong contract caveat | ✓ against its own test (central +0.3 JOD / 8–12% ms, vs a pass bar of ≥0.3 JOD with ≥58% preference and a kill below 5% saved, `round2/E_F_search_autotune.md:37,112-113`). ✗ against the separate Wukong 30-lock target (central 2.5 ms vs ≥4.3 ms needed). | ✓ | ✓ | **Viable** as an idea; not the Wukong lock |
 | V2 | partly | partly (the 1100 MHz pin was reviewed in R4 only) | ✓ for non-anti-cheat games; anti-cheat pending §3.6 and §3.8 | ✗ central p99 −5% vs its own ≥8% bar | ✓ | partly (Steam rewrites values) | **Conditional** |
 | V3 | ✓ | ✓ (R2, R4) | ✓ | unknown (depends on third parties) | ✗ judged by a maintainer acting within 60 days | ✓ | **Conditional** |
 | V4 | ✓ | ✓ (R2) | ✓ inside gamescope | not native | ✓ offline test | ✗ unless Valve adopts it | Complementary |
@@ -234,12 +238,12 @@ So the next useful iteration of the loop is empirical (§9). Another paper round
 |---|---|---|---|
 | Against the nearest stock preset at equal look (`round2/E_F_search_autotune.md:37`) | 3% | 8–12% | 20% |
 | Against the best existing human Deck guide | 0% | 0–5% | 10% |
-| Medium-plus Wukong (my itemisation, est.: Lumen budgets ~1 ms, split reconstruction 0.6, FSR mip bias 0.4, driver sweep 0.45 at central) | 0.5 ms | 2.5 ms | 5 ms |
+| Medium-plus Wukong. The note's own itemisation is 3–4 ms in total (`round3/W1_perceived_high.md:119`). My estimate sums Lumen budgets (~1 ms, half of `round2/B_H_amortization_gi.md:42`), split reconstruction 0.6 and FSR mip bias 0.4 (`round4/R4_gpu_perception.md:48,132`) and the driver sweep 0.45. That is an **upper bound**, because these knobs overlap. | 0.5 ms | 2.5 ms | 5 ms |
 
 **Where it's aimed.**
 - **Wukong:** it has a free, deterministic benchmark tool, and Medium/50% is the closest to a lock. Subject to §3, decision 7.
 - **Stalker 2:** the alternative lead.
-- **Space Marine 2:** raise its GPU settings up to the CPU-bound line. Its game settings file is current Tier S. Risk is low (est.), pending Focus/Saber's answer, because its "Mods Detected" gate could misfire on config edits (`round2/X_anticheat_legal_maint.md:167`).
+- **Space Marine 2:** raise its GPU settings up to the CPU-bound line. Its game settings file is current Tier S. Risk is low (est.), pending Focus/Saber's answer, because its "Mods Detected" gate could misfire on config edits (`round2/X_anticheat_legal_maint.md:170`).
 
 **Judges.**
 - Frame time: at least 5 runs, 95% confidence intervals, against the locked-30 definition in §3, decision 2.
@@ -258,7 +262,7 @@ So the next useful iteration of the loop is empirical (§9). Another paper round
 
 **What it is.** A bundle of system-level changes, A/B-tested together. Sources: `round2/C_sched_power.md`, `round3/W3_cpu_wall.md` and `round4/R4_cpu_ecosystem.md`.
 
-- **CPU power mode:** `amd_pstate=guided`, or EPP=performance on both siblings of the critical cores.
+- **CPU power mode:** the kernel's "guided" frequency mode (`amd_pstate=guided`), or EPP=performance on both siblings of the critical cores.
   - LPC 2026 slides, Civ VI on a Deck OLED: worst-1% frame time went from 70–73 ms to 47 ms, and p999 from 75–77 ms to 51 ms. Rendering power went from 12.09 to 12.20 W (n=3).
   - These were measured **on the charger, not at a binding 15 W cap.**
 - **Scheduler slice:** `base_slice_ns` from 2.8 ms down to 0.3–0.7 ms. It reverts on suspend unless it is written before `tunable_scaling`.
@@ -267,7 +271,7 @@ So the next useful iteration of the loop is empirical (§9). Another paper round
   - Applies only if the power-limit throttle bits fire, and auto mode doesn't already drop the GPU below 1200 MHz.
   - Steam's Manual GPU Clock sets a pin, not a ceiling.
   - Gated on §3, decisions 6 and 8.
-- **Guided undervolt:** Fede changes BIOS voltage offsets himself. DeckForge validates them with checksum kernels, cold and warm.
+- **Checked undervolt:** Fede changes BIOS voltage offsets himself. DeckForge validates them with checksum kernels, cold and warm.
 - **Throttle-bit logging:** decides whether any power lever can matter at all.
 
 **Diagnostic, before any arm.**
@@ -288,10 +292,12 @@ This targets stutter, not the gap to High. The GPU-bound pessimistic case would 
 **Judge.** Interleaved ABAB runs at 15 W.
 - **Pass:** p99 at least 8% better in 2 or more target scenes, average fps no worse than −1% in GPU-bound scenes, and energy per frame up by no more than 5%.
 - **Kill:** p99 better by less than 3% everywhere.
-- **Positive control:** Civ VI with guided mode **on the charger**, as LPC measured it. It must show a worst-1% improvement of 20% or more. The 15 W run is the actual test.
+- **Positive control:** Civ VI in the guided CPU mode **on the charger**, as LPC measured it. It must show a worst-1% improvement of 20% or more. The 15 W run is the actual test.
 
 **Risks and undo.**
-- **The undervolt can silently corrupt data, including save files** (`round2/C_sched_power.md:112`). It must pass the checksum validation, with a 10 mV margin, before any real play.
+- **The undervolt can silently corrupt data, including save files** (`round2/C_sched_power.md:112`). Two rules follow:
+  - **Back up the game save folders before the first undervolt run.** Resetting the BIOS does not repair corruption that has already been written.
+  - The undervolt must pass the checksum validation, with a 10 mV margin, before any real play.
 - **Undo:**
   - a reboot resets the kernel and sysfs values;
   - BIOS offsets are reset in the Setup Utility;
@@ -342,13 +348,13 @@ This targets stutter, not the gap to High. The GPU-bound pessimistic case would 
 
 | Game | High-like today | V1 + driver sweep at a High-preset look (pess / central / opt) | Medium-plus route | What could close the rest | Tier notes |
 |---|---|---|---|---|---|
-| Black Myth: Wukong | ~18.5 fps | 19.1 / 20.9 / 24.1 fps | Measured 32 avg / 28 at the 5th-percentile low at Medium/50%; after V1, 32.5 / 34.8 / 38.1 fps average. **Borderline lock**: the optimistic case only (below). | A panel accepting Medium-plus, plus V1 near its optimistic end | Settings files; EULA §8.3 (§3, decision 7) |
+| Black Myth: Wukong | ~18.5 fps | 19.1 / 20.9 / 24.1 fps | Measured 32 avg / 28 at the 5th-percentile low at Medium/50%. After V1: 35–37 fps average on the note's 3–4 ms estimate, and 32.5 / 34.8 / 38.1 fps on my upper-bound estimate. **Borderline to unlikely lock** on paper (below). | A panel accepting Medium-plus, plus the bench beating the paper estimate | Settings files; EULA §8.3 (§3, decision 7) |
 | Stalker 2 (v2.0, UE 5.5.4) | ~18.7 fps | 19.3 / 21.1 / 24.3 fps | Unknown: no v2.0 Deck measurement | Measure first; CPU column for settlements | No anti-cheat; Tier I possible |
-| Monster Hunter Wilds | ~15 fps | 15.4 / 16.8 / 19.4 fps (menu only, so likely the low end) | Verified "30 and above most of the time" at defaults; plains below 20 | Long shot: a Capcom handheld tier at a below-High look (V3) | Menu only; Tier I dead |
-| Space Marine 2 | ~22 fps average; worst hordes ~18 | Near-High graphics at today's fps, if the CPU limit is simulation. Hordes 0 / +3 / +15%, pending §3.6/§3.8. | n/a | Saber's 4-core swarm budget (V3) | Easy Anti-Cheat |
+| Monster Hunter Wilds | ~15 fps | About 15.4 fps. Only the 3% pessimistic case applies: the central and optimistic cases assume UE-style cvars Wilds doesn't have (`round2/E_F_search_autotune.md:31`). | Verified "30 and above most of the time" at defaults; plains below 20 | Long shot: a Capcom handheld tier at a below-High look (V3) | Menu only; Tier I dead |
+| Space Marine 2 | ~22 fps average. Hordes: drops to 14 fps seen at launch (one review); ~18 in the worst hordes by PS5 scaling (est.); current figure unmeasured. | Near-High graphics at today's fps, if the CPU limit is simulation. Hordes 0 / +3 / +15% for the whole V2 stack (the GPU pin alone is 0 / +3 / +8%), pending §3.6 and §3.8. | n/a | Saber's 4-core swarm budget (V3) | Easy Anti-Cheat |
 | Alan Wake 2 | ~11 fps | ~11 fps (the non-mesh-shader probe is −3 / 0 / +2 ms) | n/a | Not reachable with these levers | No anti-cheat (Epic store) |
 
-**How these were computed** (my arithmetic, est.; checked by the verifier's `verification/arith.py.txt`).
+**How these were computed** (my arithmetic, est.). The round-2 verifier recomputed every row independently and got the same figures (`verification/arith2.py.txt`, `verification/verifier_round2.md`).
 
 High-preset look:
 - frame time = baseline × (1 − V1 %) × (1 − driver-sweep %);
@@ -359,9 +365,10 @@ High-preset look:
 - the CPU levers add about 0 here because these scenes are GPU-bound.
 
 Medium-plus Wukong:
-- 31.25 ms measured, minus 0.5 / 2.5 / 5 ms.
+- 31.25 ms measured, minus either the note's 3–4 ms, or my upper-bound 0.5 / 2.5 / 5 ms.
 - A locked 30 under the §3.2 definition needs an uncapped p99 of 31.7 ms or less. In gameplay, 1% lows run 0.75–0.85× the average (`round2/baselines_stack.md`), so that needs an average frame time of about 23.8–26.9 ms. That is a saving of about 4.3–7.5 ms.
-- Only the optimistic 5 ms reaches the easy end of that range, and only when 1% lows are good (ratio 0.85) (`verification/lock30.py.txt`).
+- The note's best 4 ms falls just short of even the easy end, 4.3 ms. My upper-bound 5 ms reaches it only when 1% lows are good (ratio 0.85) (`verification/arith2.py.txt`).
+- **Benchmark tool versus gameplay.** In the benchmark tool, lows run about 0.90× the average (`round2/baselines_stack.md:104`, "optimistic"). There the bar drops to about 2.7 ms. So a lock shown only in the benchmark tool is provisional; gameplay decides.
 - If XeSS is needed to pass the panel, it costs about 1.5 ms more (est.), which makes this harder.
 
 The baselines are estimates. §9 step 1 replaces them with measurements.
@@ -429,7 +436,9 @@ The baselines are estimates. §9 step 1 replaces them with measurements.
 4. **V1 knobs on Wukong or Stalker 2** (manual config edits plus runs, 1 week; per §3, decision 7).
    - Test each knob alone, confirmed live by a visible extreme value, then combined.
    - The irradiance-gather probe is compared against High, not just checked for a crash.
-   - **Pass:** the locked-30 definition from §3 decision 2, measured directly at Medium-plus (in practice, a saving of at least about 4.3 ms), with no more than 0.25 JOD loss on the metric screen.
+   - Copy each config file before editing it.
+   - **Pass:** the locked-30 definition from §3 decision 2, measured directly at Medium-plus in pre-registered gameplay scenes (in practice, a saving of at least about 4.3 ms), with no more than 0.25 JOD loss on the metric screen.
+     - A pass in the benchmark tool alone is labelled provisional, because its lows run about 0.90× (`round2/baselines_stack.md:104`).
    - **Kill:** less than 2 ms saved.
 5. **Panel pilot** (manual, in parallel; needs §3 decision 5).
    - 8 observers; Wukong clips of High vs Medium-plus, plus High-vs-Low and High-vs-High controls.
@@ -441,7 +450,7 @@ The baselines are estimates. §9 step 1 replaces them with measurements.
    - **Wilds plains question:** Windward Plains at Lowest, internal 360p vs 800p, 10 runs, frame-time logs only.
      - Under 10% change means CPU-bound, so draft the Capcom packet.
      - Over 25% means GPU-bound, so drop it.
-     - Contract note: Capcom §8.1 bans "analyzing… data". Frame-time logging is not program analysis, but treat this as Fede's call.
+     - Contract note: Capcom §8.1 bans "analyzing… data". Whether frame-time logging counts as that is untested (`round4/R4_cpu_ecosystem.md:119`). Fede's call; not legal advice.
 
 **What Fede does by hand:**
 - answer the §3 decisions and send the letters;

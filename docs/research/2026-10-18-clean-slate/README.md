@@ -57,8 +57,12 @@ Brief: `00_brief_round3.md`.
 
 | File | What it is |
 |---|---|
-| `verification/verifier_round1.md` | A fresh-context verifier's review of revision 1 of the design doc. Verdict: FAIL, with 13 findings. Revision 2 addresses all of them. |
-| `verification/arith.py.txt`, `verification/lock30.py.txt` | The verifier's arithmetic scripts, renamed so the linter skips them |
+| `verification/verifier_round1.md` | A fresh-context verifier's review of revision 1. Verdict: FAIL, with 13 findings. |
+| `verification/verifier_round2.md` | A second fresh-context verifier's review of revision 2. Verdict: FAIL, with 11 new or remaining findings. Revision 3 addresses them; see the design doc's §2 table for the re-check result. |
+| `verification/arith.py.txt`, `verification/lock30.py.txt` | The round-1 verifier's scripts. They check revision 1's numbers. |
+| `verification/arith2.py.txt`, `verification/newfindings.py.txt` | The round-2 verifier's scripts. They check revision 2's numbers, which revision 3 keeps. |
+
+All four scripts are renamed `.py.txt` so the linter skips them.
 
 ## Reading the numbers
 

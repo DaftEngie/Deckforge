@@ -1,0 +1,13 @@
+# Repro for new findings in CLEAN_SLATE_NATIVE.md rev 2.
+need_min = 31.25 - 31.7*0.85          # doc:363 easy end of required saving
+print(f"N1 V1 central saving 2.5 ms vs its own step-4 pass bar >= {need_min:.2f} ms -> meets part 4: {2.5 >= need_min}")
+print(f"   V2 analogue (doc:194): central p99 -5% vs >=8% bar -> meets: {5 >= 8}  (scored X)")
+# N2: doc:237 sums knobs; R4_gpu:236 'never sum them'; W1:119 itemised total 3-4 ms
+print(f"N2 doc:237 central = sum 1+0.6+0.4+0.45 = {1+0.6+0.4+0.45:.2f} ms (a sum R4:236 forbids)")
+print(f"   W1:119 best itemised total 4.0 ms >= {need_min:.2f}? {4.0 >= need_min}; 'larger knob, not sum' (W2_W4:73) opt Lumen 4.0 / split 1.1 -> {max(4.0,1.1) >= need_min}")
+# N3: benchmark tool lows ~0.90x (baselines_stack.md:104) vs gameplay 0.75-0.85
+bt = 31.25 - 31.7*0.90
+print(f"N3 saving needed if step 4 is measured in the benchmark tool (ratio 0.90): {bt:.2f} ms -> central 2.5 ms {'nearly ' if 2.5<bt else ''}meets it")
+# N5: SM2 hordes measured 14 (baselines:33, W3:19) vs doc 18 (R4_cpu:208 est.)
+for base in (14, 18):
+    print(f"N5 SM2 hordes {base} fps x1.15 opt -> {base*1.15:.1f} fps")
