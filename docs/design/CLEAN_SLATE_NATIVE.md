@@ -32,7 +32,7 @@ Fede asked for a fresh start. The goal: find a way to play demanding (PS5-era) g
 What is plausible:
 
 - **Black Myth: Wukong** can probably hold a locked 30 fps at a "Medium-plus" look.
-  - Today it measures 32 fps average and 28 fps at the 5th-percentile low, at Medium with a 50% render scale, on an OLED Deck, in its benchmark tool.
+  - It measured 32 fps average and 28 fps at the 5th-percentile low, at Medium with FSR at a 50% render scale, on an OLED Deck, in its benchmark tool. That was a user report from August 2024; the game has been patched since.
   - The open question is whether a blind panel can tell that look from High on a 7" screen at hand-held distance. Nobody has tested it. V1's first experiment answers it.
 - **Stalker 2** is similar but less certain: no current Medium measurement on a Deck exists.
 - **Space Marine 2** is held back by the CPU in hordes. If its CPU limit is game simulation rather than render-thread work, it can run near-High graphics at today's frame rate for free; the triage in V2 tells which. Only the publisher can lift its horde floor to 30.
@@ -218,11 +218,16 @@ Against the best existing human Deck guide, the gain is only 0–5% (`round2/E_F
 - Shipping builds may ignore some cvars, so every cvar needs a visible-effect check.
 - The benchmark tool is a frozen build.
 - The irradiance gather may render wrong lighting instead of crashing, so compare the image against High.
+- **Contract risk on Wukong** (not legal advice). Its EULA §8.3 defines a cheat as an external program that impacts gameplay, giving as examples "simulating user operations, modifying operational environments, and altering data".
+  - A strict reading could reach both V1 and V2.
+  - Bench work is Fede's personal use. Publishing Wukong profiles would want Game Science's non-objection first.
 
 ### V2. Stutter kit (S0, outside the game)
 
 **What it is.** A small set of system-level changes, A/B-tested as one bundle on the bench:
-- **CPU power mode:** `amd_pstate=guided`, or EPP=performance on both siblings of the critical cores. LPC 2026, Civ VI: worst-1% frame time went from 70–73 ms to 47 ms at +0.11 W, which was not significant.
+- **CPU power mode:** `amd_pstate=guided`, or EPP=performance on both siblings of the critical cores.
+  - LPC 2026 slides, Civ VI on a Deck OLED: worst-1% frame time went from 70–73 ms to 47 ms, and p999 from 75–77 ms to 51 ms. Rendering power went from 12.09 W to 12.20 W (n=3).
+  - These were measured **on the charger, not at a binding 15 W cap.** Testing at 15 W is the gap DeckForge has to close.
 - **Scheduler slice:** `base_slice_ns` from 2.8 ms to 0.3–0.7 ms. To make it survive suspend, write `base_slice_ns` and then `tunable_scaling`.
 - **Thread priorities:** SCHED_IDLE for decompression and IO workers only.
 - **Space Marine 2, CPU-bound scenes only:** a GPU clock pin around 1100 MHz. This applies only if the power-limit throttle bits fire, and only if auto mode doesn't already drop GFX below 1200 MHz.
