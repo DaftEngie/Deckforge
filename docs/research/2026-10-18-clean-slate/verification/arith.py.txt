@@ -1,0 +1,64 @@
+# Recompute every number in CLEAN_SLATE_NATIVE.md section 7 and related arithmetic.
+from math import sqrt, tan, radians
+from statistics import NormalDist
+
+def fps(ms): return 1000.0 / ms
+
+def stack(base, v1_frac, sweep_frac=0.0, extra_ms=0.0):
+    v1 = base * v1_frac
+    rem = base - v1
+    sw = rem * sweep_frac
+    ft = rem - sw - extra_ms
+    return v1, sw, ft, fps(ft)
+
+print("== Wukong High-like, doc's numbers (54 ms base) ==")
+for name, args in [("pess 3%", (0.03,)), ("cent 12% + sweep 1.5%", (0.12, 0.015)),
+                   ("opt 25% + sweep 4% + HalfRate 1.4", (0.25, 0.04, 1.4))]:
+    v1, sw, ft, f = stack(54.0, *args)
+    print(f"  {name:36s} V1={v1:5.2f} ms sweep={sw:4.2f} ms -> {ft:5.2f} ms = {f:5.2f} fps; gain x{54/ft:4.2f}")
+
+print("== Wukong using E_F note's own range (3 / 8-12 / 20 %), no Half Rate on top ==")
+for name, args in [("pess 3%", (0.03,)), ("cent 10% + sweep 1.5%", (0.10, 0.015)),
+                   ("opt 20% + sweep 4%", (0.20, 0.04))]:
+    v1, sw, ft, f = stack(54.0, *args)
+    print(f"  {name:36s} -> {ft:5.2f} ms = {f:5.2f} fps; gain x{54/ft:4.2f}")
+
+print("== Medium-plus Wukong: 31.25 ms minus 1/3/6 ms ==")
+for s in (1, 3, 6):
+    print(f"  -{s} ms -> {31.25-s:5.2f} ms = {fps(31.25-s):5.2f} fps")
+print("  clean-lock average needed for 1%-low ratio 0.75/0.80/0.85:",
+      [round(30/r, 1) for r in (0.75, 0.80, 0.85)])
+print("  saving needed to hit 37.5 fps from 31.25 ms:", round(31.25 - 1000/37.5, 2), "ms")
+print("  W1 Q3 saving after R4 cut mip bias 0.6->0.2 ms: 3-4 ms becomes", 3-0.4, "-", 4-0.4, "ms")
+
+print("== Stalker 2 (53.5 ms) same method ==")
+for name, args in [("pess 3%", (0.03,)), ("cent 12% + sweep 1.5%", (0.12, 0.015)),
+                   ("opt 25% + sweep 4% + HalfRate 1.4", (0.25, 0.04, 1.4))]:
+    v1, sw, ft, f = stack(53.5, *args)
+    print(f"  {name:36s} -> {ft:5.2f} ms = {f:5.2f} fps")
+
+print("== Wilds (67 ms): menu ~10% + Half Rate 2.4 ms ==")
+_, _, ft, f = stack(67.0, 0.10, 0.0, 2.4); print(f"  menu+HR only          -> {ft:5.2f} ms = {f:5.2f} fps")
+_, _, ft, f = stack(67.0, 0.10, 0.015, 2.4); print(f"  menu+HR+sweep 1.5%    -> {ft:5.2f} ms = {f:5.2f} fps")
+
+print("== Space Marine 2 hordes ~18 fps ==")
+for g in (0.0, 0.03, 0.05, 0.08, 0.15):
+    print(f"  +{g*100:4.1f}% -> {18*(1+g):5.2f} fps")
+
+print("== Alan Wake 2 (91 ms) ==")
+for p in (0.03, 0.08, 0.12):
+    print(f"  V1 {p*100:.0f}% -> {fps(91*(1-p)):5.2f} fps")
+
+print("== Pixels per degree ==")
+diag_px = sqrt(1280**2 + 800**2); pitch_mm = 7.4*25.4/diag_px
+for d in (300, 400):
+    print(f"  {d} mm: {d*tan(radians(1))/pitch_mm:5.1f} ppd")
+
+print("== 0.5 JOD as preference (1 JOD = 75%) ==")
+z = NormalDist().inv_cdf(0.75)
+print("  ", round(NormalDist().cdf(0.5*z)*100, 1), "%")
+
+print("== LPC power delta ==", round(12.20-12.09, 2), "W")
+print("== Section 9 schedule (sequential on one bench Deck) ==")
+days = 0.5 + 1/24 + 4 + 7 + 7
+print("  evening + hour + 4 d + 1 wk + 1 wk =", round(days, 1), "days vs 14")

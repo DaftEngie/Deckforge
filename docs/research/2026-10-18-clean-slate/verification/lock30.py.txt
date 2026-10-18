@@ -1,0 +1,8 @@
+# Does Wukong Medium-plus meet R4's frame-time definition of a 30 lock (uncapped p99 <= 31.7 ms)?
+# p99 frame time ~= average frame time / (1%-low-to-average ratio); ratios 0.75-0.85 per W1 Q3 / baselines.
+for label, avg_ms in (("measured Medium/50% FSR", 31.25), ("V1 pess -1 ms", 30.25),
+                      ("V1 central -3 ms", 28.25), ("V1 opt -6 ms", 25.25),
+                      ("central, XeSS instead of FSR (+1.5 ms est.)", 28.25 + 1.5)):
+    p99 = {r: round(avg_ms / r, 1) for r in (0.75, 0.80, 0.85)}
+    ok = {r: v <= 31.7 for r, v in p99.items()}
+    print(f"{label:46s} avg {1000/avg_ms:5.1f} fps  p99 ms by ratio {p99}  meets<=31.7: {ok}")

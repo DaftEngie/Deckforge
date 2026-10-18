@@ -53,6 +53,13 @@ Brief: `00_brief_round3.md`.
 | `round4/R4_gpu_perception.md` | Round 3 GPU and perception ideas |
 | `round4/R4_cpu_ecosystem.md` | Round 3 CPU and ecosystem ideas |
 
+## Verification of the design doc
+
+| File | What it is |
+|---|---|
+| `verification/verifier_round1.md` | A fresh-context verifier's review of revision 1 of the design doc. Verdict: FAIL, with 13 findings. Revision 2 addresses all of them. |
+| `verification/arith.py.txt`, `verification/lock30.py.txt` | The verifier's arithmetic scripts, renamed so the linter skips them |
+
 ## Reading the numbers
 
 - Figures marked "(est.)" are estimates.
