@@ -25,20 +25,20 @@ One PR, stacked on `feat/discover-detect` (PR #5), because it reuses `deckforge.
 - `DiscoverError` → `SnapshotError`, and no zip is written.
 
 **S2 Settings files.** For every card with `installed: true`, each entry in its `settings_files` is copied into the zip at `settings/<appid>/<n>_<basename>`. `n` is the entry's index in the list.
-- **Not copied:** files that are not regular files (checked with `lstat`, so a link is skipped), files larger than 1 MiB, and entries whose `kind` is `reg` (Wine registry files can hold personal data).
+- **Not copied:** files that are not regular files (checked with `lstat`, so a link is skipped), files larger than 1 MiB, and entries whose `kind` is `reg` or `registry` (Wine registry files can hold personal data; discover reports `user.reg` as kind `registry`).
 - Each skip is recorded in `manifest.json` with a reason:
 
   | Reason | When |
   |---|---|
   | `not_regular` | Not a regular file, including a link |
   | `too_large` | Larger than 1 MiB |
-  | `excluded_kind` | `kind` is `reg` |
+  | `excluded_kind` | `kind` is `reg` or `registry` |
   | `unreadable` | An OS error while reading |
 
 **S3 Sizes and orphans.**
-- `sizes.json` gives each card's total byte size of `shadercache_path` and of its compatdata folder (`<library>/steamapps/compatdata/<appid>`), or `null` if absent.
+- `sizes.json` has a top-level `games` list with one entry per card: `appid`, `library`, `shadercache` and `compatdata`. Each of the last two is the total byte size of `shadercache_path` and of its compatdata folder (`<library>/steamapps/compatdata/<appid>`), or `null` if absent.
 - Sizes are summed with `os.scandir` and `lstat` (`follow_symlinks=False`); links are never followed.
-- It also lists **orphans**: every all-digit entry under each available library's `steamapps/shadercache` and `steamapps/compatdata` whose appid has no card in `scan.json`. For each it gives the path and byte size.
+- A top-level `orphans` list, `{"path", "size"}` per entry, lists every **orphan**: every all-digit entry under each available library's `steamapps/shadercache` and `steamapps/compatdata` whose appid has no card in `scan.json`. For each it gives the path and byte size.
 - Folder errors while sizing become `{"code": "size_unreadable", "path": ...}` issues in `sizes.json`. They are never silent (R12).
 
 **S4 Decky plugins.**
@@ -115,3 +115,12 @@ The file paths are read through module-level constants, so tests can redirect th
 
 1. Should the default cover all installed games or only chosen ones? **Default: all installed games.** Settings files are small; the scan already covers everything.
 2. Should Wine `user.reg` be included for games that keep settings there? **No, by default** (privacy). Revisit per game if a profile needs it.
+
+3. Pinned after test-first review (2026-10-21):
+   - `size_unreadable` path is the folder that failed.
+   - `board` is the raw name with the trailing newline stripped (`"Galileo"`).
+   - A missing os-release gives `{}` and doesn't fail.
+   - A non-UTC `now` is converted to UTC.
+   - A refused `out_dir` is checked before anything is created.
+   - Links named `*.csv` are not logs.
+   - `scan.json` ends with `"\n"`.
