@@ -25,6 +25,15 @@ analyze(...)["verdict"], ["reasons"]                                  [M9, C1, C
     math.floor(x * 10) / 10 (C18 replaces C11's always-floor); t formatted "g".
   Verdict fixtures use spread() (rows 500 ms apart) so they are >= 120 s and not
   forced to not_enough_data by short_log.
+
+Item 19 (F3-F5), binding over the above where they differ:
+  - gold also needs worst_window avg >= 34.5, good_enough needs it >= 30 (unrounded);
+    the fail reason "worst minute averaged {w} fps, below {t}" goes last (C18 numbers).
+  - bad_rows / (bad + non-bad data rows, blanks excluded) > MAX_BAD_SHARE (0.05) adds
+    warning too_many_bad_rows right after bad_rows and forces not_enough_data with the
+    reason "more than 5% of rows were unreadable", last among the C18 reasons.
+  - no gpu_load column adds warning no_gpu_data at the very end; it never blocks a pass.
+  Mixed-frame fixtures use front_loaded() so no window is slower than the whole log.
 """
 
 from test_measure_support import (
@@ -32,6 +41,7 @@ from test_measure_support import (
     MS,
     START_NS,
     cumulative,
+    front_loaded,
     grid,
     interleave,
     row,
@@ -51,14 +61,15 @@ def report(tmp_path, lines, fg=1, **kw):
 
 
 def mix(*groups):
-    """mix((count, frametime), ...) -> interleaved frame times, rows 500 ms apart (>= 120 s)."""
+    """mix((count, frametime), ...) -> front_loaded rows: 120 s, worst minute >= overall avg."""
     frametimes = [ft for count, ft in groups for _ in range(count)]
-    return spread(interleave(frametimes))
+    return front_loaded(frametimes)
 
 
 SHORT = "log is shorter than 120 s"
 IDLE = "the graphics chip was mostly idle, likely loading or menus"
 FEW = "fewer than 300 frames"
+BAD_SHARE = "more than 5% of rows were unreadable"
 
 
 # ---- M8: warnings ------------------------------------------------------------------
@@ -75,6 +86,7 @@ def test_m8_all_warnings_in_spec_order(tmp_path):
         "likely_loading_or_menus",
         "few_frames",
         "bad_rows",
+        "too_many_bad_rows",  # item 19 F5: 1 bad of 12 data rows
         "artifact_rows",
     ]
 
@@ -164,11 +176,15 @@ def test_m9_good_enough_at_exact_avg_threshold(tmp_path):
 
 
 def test_m9_fail_just_below_good_avg_although_it_rounds_to_30(tmp_path):
-    # sum 199*32.5 + 101*35 = 10002.5 -> avg 29.9925
+    # sum 199*32.5 + 101*35 = 10002.5 -> avg 29.9925. Worst minute (F4) = all but one
+    # 35 ms frame: 299000 / 9967.5 = 29.9975, which rounds to 30.0, so floor -> 29.9.
     r = report(tmp_path, mix((199, 32.5), (101, 35.0)))
     assert r["avg_fps"] == 30.0
     assert r["verdict"] == "fail"
-    assert r["reasons"] == ["average 29.9 fps is below 30"]
+    assert r["reasons"] == [
+        "average 29.9 fps is below 30",
+        "worst minute averaged 29.9 fps, below 30",
+    ]
 
 
 def test_m9_good_enough_at_exact_low_threshold(tmp_path):
@@ -231,10 +247,13 @@ def test_c1_gold_with_fg2_keeps_gold_when_real_floor_met(tmp_path):
 
 
 def test_c11_reason_uses_floor_rounding_29_96_to_29_9(tmp_path):
-    r = report(tmp_path, spread([1000 / 29.96] * 300))
+    r = report(tmp_path, spread([1000 / 29.96] * 300))  # every minute is 29.96 too (F4)
     assert r["avg_fps"] == 30.0
     assert r["verdict"] == "fail"
-    assert r["reasons"] == ["average 29.9 fps is below 30"]
+    assert r["reasons"] == [
+        "average 29.9 fps is below 30",
+        "worst minute averaged 29.9 fps, below 30",
+    ]
 
 
 def test_c11_all_three_reasons_in_order(tmp_path):
@@ -244,6 +263,7 @@ def test_c11_all_three_reasons_in_order(tmp_path):
         "average 20.0 fps is below 30",
         "1% low 20.0 fps is below 28",
         "real-frame 1% low 10.0 fps is below 14",
+        "worst minute averaged 20.0 fps, below 30",  # item 19 F4: always last
     ]
 
 
@@ -316,16 +336,27 @@ def test_c18_reason_number_rounds_like_report_24_75_to_24_8(tmp_path):
     # 3168 frames, 1888 x 40 ms + 1280 x 41 ms = 128000 ms (128 s of real time):
     # avg = 3168000 / 128000 = 24.75 exactly -> round 24.8 (floor would say 24.7).
     # P99 = 41 ms -> 24.39 -> 24.4.
+    # Row order is 640 x 41, 1888 x 40, 640 x 41. Worst minute (F4) is [0, 60): the 640
+    # rows at 41 ms (last at 26.199 s) plus 845 rows at 40 ms (26.239 .. 59.999 s):
+    # 1485000 / (26240 + 33800) = 24.7335 -> 24.7.
     r = report(tmp_path, cumulative(interleave([40.0] * 1888 + [41.0] * 1280)))
     assert r["avg_fps"] == 24.8
+    assert r["worst_window"] == {"start_s": 0.0, "avg_fps": 24.7, "low_1pct_fps": 24.4}
     assert r["verdict"] == "fail"
-    assert r["reasons"] == ["average 24.8 fps is below 30", "1% low 24.4 fps is below 28"]
+    assert r["reasons"] == [
+        "average 24.8 fps is below 30",
+        "1% low 24.4 fps is below 28",
+        "worst minute averaged 24.7 fps, below 30",
+    ]
 
 
 def test_c18_reason_floors_29_96_because_rounding_reaches_30(tmp_path):
     r = report(tmp_path, spread([1000 / 29.96] * 300))
     assert r["avg_fps"] == 30.0
-    assert r["reasons"] == ["average 29.9 fps is below 30"]
+    assert r["reasons"] == [
+        "average 29.9 fps is below 30",
+        "worst minute averaged 29.9 fps, below 30",
+    ]
 
 
 def test_c18_low_reason_floors_27_96_because_rounding_reaches_28(tmp_path):
@@ -346,3 +377,149 @@ def test_c18_real_reason_floors_13_96_because_rounding_reaches_14(tmp_path):
     assert r["real_low_1pct_fps"] == 14.0
     assert r["verdict"] == "fail"
     assert r["reasons"] == ["real-frame 1% low 13.9 fps is below 14"]
+
+
+# ---- item 19 F4: the worst minute counts --------------------------------------------
+
+
+def slow_minute(slow_ms, slow_rows):
+    """About 10 min at 22.5 ms (44.4 fps) with one slow stretch from rel 45.0 s.
+
+    Rows 0..2000 at 22.5 ms (row 2000 at 45.0 s, a multiple of WINDOW_STEP_S), then
+    slow_rows at slow_ms, then 22000 rows at 22.5 ms (495 s more). Elapsed advances by
+    each frame's own time, so the window [45, 105) holds row 2000 plus the slow rows
+    whose elapsed is below 105 s.
+    """
+    return cumulative([22.5] * 2001 + [slow_ms] * slow_rows + [22.5] * 22000, gpu_load=95)
+
+
+def test_f4_full_minute_at_20_fps_fails_with_worst_minute_reason_last(tmp_path):
+    # N = 25201, sum = 2001*22.5 + 1200*50 + 22000*22.5 = 600022.5 ms -> avg 42.0.
+    # Sorted, 1200 slow frames sit at indices 24001..25200; P99 index 24948 -> 50 ms.
+    # Window [45, 105): 22.5 + 1199*50 = 59972.5 ms over 1200 rows -> 20.009 -> 20.0.
+    r = report(tmp_path, slow_minute(50.0, 1200))
+    assert r["duration_s"] == 600.0
+    assert r["avg_fps"] == 42.0
+    assert r["worst_window"] == {"start_s": 45.0, "avg_fps": 20.0, "low_1pct_fps": 20.0}
+    assert r["verdict"] == "fail"
+    assert r["reasons"] == [
+        "1% low 20.0 fps is below 28",
+        "worst minute averaged 20.0 fps, below 30",
+    ]
+
+
+def test_f4_worst_minute_alone_fails_good_enough(tmp_path):
+    # Slow stretch 1740 x 34.5 ms (28.99 fps). Overall avg 25741000/600052.5 = 42.9 and
+    # P99 = 34.5 ms -> 28.99 >= 28, so only the worst minute fails good_enough:
+    # [45, 105) = 22.5 + 1739*34.5 = 60018 ms over 1740 rows -> 28.991 -> "29.0".
+    r = report(tmp_path, slow_minute(34.5, 1740))
+    assert r["avg_fps"] == 42.9
+    assert r["low_1pct_fps"] == 29.0
+    assert r["worst_window"]["start_s"] == 45.0
+    assert r["worst_window"]["avg_fps"] == 29.0
+    assert r["verdict"] == "fail"
+    assert r["reasons"] == ["worst minute averaged 29.0 fps, below 30"]
+
+
+def test_f4_gold_missed_only_on_worst_minute_is_good_enough(tmp_path):
+    # Slow stretch 2000 x 30 ms (33.3 fps). Overall avg 26001000/600022.5 = 43.3 and
+    # P99 = 30 ms -> 33.33 >= 33: every gold test passes except the worst minute,
+    # [45, 105) = 22.5 + 1999*30 = 59992.5 ms over 2000 rows -> 33.34 < 34.5 (>= 30).
+    r = report(tmp_path, slow_minute(30.0, 2000))
+    assert r["avg_fps"] == 43.3
+    assert r["low_1pct_fps"] == 33.3
+    assert r["worst_window"] == {"start_s": 45.0, "avg_fps": 33.3, "low_1pct_fps": 33.3}
+    assert r["verdict"] == "good_enough"
+    assert r["reasons"] == []
+
+
+# ---- item 19 F5: too many unreadable rows ---------------------------------------------
+
+
+def with_bad_rows(good, bad, blanks=0):
+    """good spread rows at 25 ms (gold on their own), then bad rows, then blank lines."""
+    lines = spread([25.0] * good)
+    end = START_NS + good * 500 * MS
+    lines += [row("nan", end + i * MS) for i in range(bad)]
+    return lines + [""] * blanks
+
+
+def test_f5_max_bad_share_constant():
+    assert measure.MAX_BAD_SHARE == 0.05
+
+
+def test_f5_exactly_5_percent_bad_is_not_too_many(tmp_path):
+    r = report(tmp_path, with_bad_rows(380, 20))  # 20 / 400 = 0.05, not > 0.05
+    assert r["bad_rows"] == 20
+    assert r["warnings"] == ["bad_rows"]
+    assert r["verdict"] == "gold"
+
+
+def test_f5_just_over_5_percent_forces_not_enough_data(tmp_path):
+    # 21 / 401 = 5.2%. The 100 blank lines are not data rows (21 / 501 would be 4.2%).
+    r = report(tmp_path, with_bad_rows(380, 21, blanks=100))
+    assert r["bad_rows"] == 21
+    assert r["warnings"] == ["bad_rows", "too_many_bad_rows"]
+    assert r["verdict"] == "not_enough_data"
+    assert r["reasons"] == [BAD_SHARE]
+
+
+def test_f5_reason_last_among_c18_reasons(tmp_path):
+    lines = steady(10, gpu_load=10) + [row("nan", START_NS + 10 * 25 * MS, gpu_load=10)]
+    r = report(tmp_path, lines)
+    assert r["verdict"] == "not_enough_data"
+    assert r["reasons"] == [SHORT, IDLE, FEW, BAD_SHARE]
+
+
+def test_f5_artifacts_count_as_readable_rows(tmp_path):
+    # 380 kept + 20 artifact rows are all non-bad: 21 bad / 421 = 4.99% -> not too many.
+    lines = spread([25.0] * 380)
+    end = START_NS + 380 * 500 * MS
+    lines += [row(ARTIFACT, end + i * 25 * MS) for i in range(20)]
+    lines += [row("nan", end + 600 * MS + i * MS) for i in range(21)]
+    r = report(tmp_path, lines)
+    assert r["artifact_rows"] == 20
+    assert r["bad_rows"] == 21
+    assert "too_many_bad_rows" not in r["warnings"]
+    assert r["verdict"] == "gold"
+
+
+# ---- item 19 F3: no GPU data is a warning, not a block -------------------------------
+
+NO_GPU_COLUMNS = [c for c in COLUMNS if c != "gpu_load"]
+
+
+def no_gpu_rows(n, step_ns=500 * MS):
+    return [row(25.0, START_NS + i * step_ns, columns=NO_GPU_COLUMNS) for i in range(n)]
+
+
+def test_f3_no_gpu_data_warning_does_not_block_a_pass(tmp_path):
+    r = report(tmp_path, no_gpu_rows(300), columns=NO_GPU_COLUMNS)  # 149.5 s at 40 fps
+    assert r["limit"] == "unknown"
+    assert r["warnings"] == ["no_gpu_data"]
+    assert r["verdict"] == "gold"
+    assert r["reasons"] == []
+
+
+def test_f3_no_gpu_data_is_last_in_warning_order(tmp_path):
+    lines = no_gpu_rows(10, 25 * MS)
+    lines.append(row(ARTIFACT, START_NS + 250 * MS, columns=NO_GPU_COLUMNS))
+    lines.append(row("nan", START_NS + 275 * MS, columns=NO_GPU_COLUMNS))
+    r = report(tmp_path, lines, columns=NO_GPU_COLUMNS)
+    assert r["warnings"] == [
+        "short_log",
+        "short_window",
+        "few_frames",
+        "bad_rows",
+        "too_many_bad_rows",
+        "artifact_rows",
+        "no_gpu_data",
+    ]
+
+
+def test_f3_not_gpu_limit_alone_does_not_block_a_pass(tmp_path):
+    # GPU at 60%: limit not_gpu (0 busy rows, mean 60 < 75) but mean >= 50, not idle.
+    r = report(tmp_path, spread([25.0] * 300, gpu_load=60))
+    assert r["limit"] == "not_gpu"
+    assert r["warnings"] == []
+    assert r["verdict"] == "gold"

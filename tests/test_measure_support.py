@@ -97,6 +97,22 @@ def spread(frametimes, gpu_load=89) -> list[str]:
     return grid(frametimes, LONG_STEP_NS, START_NS, gpu_load)
 
 
+def front_loaded(frametimes, gpu_load=89) -> list[str]:
+    """Same frame times, laid out so no 60 s window is slower than the whole log (F4).
+
+    Frames are sorted slowest first, 100 ms apart from rel 0 s (all inside the first
+    window), and one slowest frame is moved to rel 120.0 s. Window 0 is then the log
+    minus one slowest frame and later windows are faster tails of it, so worst_window
+    never drops below the overall average. duration_s is exactly 120.0 (not short_log).
+    """
+    ordered = sorted(frametimes, reverse=True)
+    body, last = ordered[1:], ordered[0]
+    assert len(body) <= 600, "body must fit inside the first 60 s window"
+    lines = [row(ft, START_NS + i * 100 * MS, gpu_load) for i, ft in enumerate(body)]
+    lines.append(row(last, START_NS + 120 * S, gpu_load))
+    return lines
+
+
 def cumulative(frametimes, start_ns=START_NS, gpu_load=89) -> list[str]:
     """Realistic rows: each row's elapsed advances by its own frame time (whole ns)."""
     lines, elapsed = [], start_ns

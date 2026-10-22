@@ -24,6 +24,11 @@ parse_log(path) -> MangoLog
       previous non-bad row's.                                                   [M1, C8]
     - first_bad_line is the 1-based file line of the first bad row, else None.
     - Whitespace-only lines are skipped and are never bad rows.                  [C9]
+  Item 19 (F1, F2):
+    - a data row the csv module rejects (a field over csv.field_size_limit(), a bare
+      \r inside a field) is a bad row; a rejected header line (1-3) raises MeasureError
+      saying the header is unreadable; never a traceback.                       [F1]
+    - frametime < MIN_FRAMETIME_MS (0.1) is a bad row.                          [F2]
   Invariants: reads only; never writes (see test_measure_cli.py, M12).
 """
 
@@ -373,3 +378,85 @@ def test_c9_duplicate_column_names_raise(tmp_path):
     path = tmp_path / "session.csv"
     path.write_text(log_text(["1,25,50,0,1"], columns=cols), encoding="utf-8")
     assert_refused(path)
+
+
+# ---- item 19 F1: damaged rows and headers -----------------------------------------
+
+OVERSIZED = "x" * 200_000  # over csv.field_size_limit() (131072)
+
+
+def test_f1_zero_byte_tail_after_power_loss_is_one_bad_row(tmp_path):
+    # 300 good rows (lines 4..303), then 200,000 zero bytes with no newline: one line.
+    path = write_log(tmp_path, steady(300))
+    path.write_bytes(path.read_bytes() + b"\0" * 200_000)
+    log = measure.parse_log(str(path))
+    assert len(log.rows) == 300
+    assert log.bad_rows == 1
+    assert log.first_bad_line == 304
+
+
+def test_f1_field_over_csv_limit_is_bad_row(tmp_path):
+    lines = [GOOD_BEFORE, row(25.0, START_NS + 25 * MS, cpu_load=OVERSIZED), GOOD_AFTER]
+    log = parse(tmp_path, lines)
+    assert log.bad_rows == 1
+    assert log.first_bad_line == 5
+    assert len(log.rows) == 2
+
+
+def test_f1_bare_cr_inside_a_field_is_one_bad_row(tmp_path):
+    lines = [GOOD_BEFORE, row(25.0, START_NS + 25 * MS, cpu_load="80\r4"), GOOD_AFTER]
+    log = parse(tmp_path, lines)
+    assert log.bad_rows == 1
+    assert [r["elapsed"] for r in log.rows] == [float(START_NS), float(START_NS + 50 * MS)]
+
+
+@pytest.mark.parametrize("line", [1, 2, 3])
+def test_f1_rejected_header_line_raises_header_unreadable(tmp_path, line):
+    header = [SYSTEM_NAMES, SYSTEM_VALUES, "fps,frametime,elapsed,extra"]
+    header[line - 1] += "," + OVERSIZED
+    data = "40,25,0,1\n40,25,25000000,1\n"
+    path = tmp_path / "session.csv"
+    path.write_text("\n".join(header) + "\n" + data, encoding="utf-8")
+    with pytest.raises(measure.MeasureError) as excinfo:
+        measure.parse_log(str(path))
+    message = str(excinfo.value).lower()
+    assert "header" in message
+    assert "unreadable" in message
+
+
+def test_f1_zero_byte_tail_cli_exits_0_without_traceback(tmp_path):
+    path = write_log(tmp_path, steady(300))
+    path.write_bytes(path.read_bytes() + b"\0" * 200_000)
+    result = run_module(["--json", str(path)])
+    assert result.returncode == 0, result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_f1_rejected_header_cli_exit_2_one_line_no_traceback(tmp_path):
+    path = tmp_path / "session.csv"
+    path.write_text("a\n" + OVERSIZED + "\nfps,frametime,elapsed\n", encoding="utf-8")
+    result = run_module([str(path)])
+    assert result.returncode == 2
+    assert "Traceback" not in result.stderr
+    assert len(result.stderr.strip().splitlines()) == 1
+
+
+# ---- item 19 F2: impossible frame times ---------------------------------------------
+
+
+def test_f2_min_frametime_constant():
+    assert measure.MIN_FRAMETIME_MS == 0.1
+
+
+@pytest.mark.parametrize("frametime", ["0.0999", "0.05", "1e-320"])
+def test_f2_frametime_below_0_1_ms_is_bad_row(tmp_path, frametime):
+    log = parse(tmp_path, [GOOD_BEFORE, row(frametime, START_NS + 25 * MS), GOOD_AFTER])
+    assert log.bad_rows == 1
+    assert log.first_bad_line == 5
+    assert len(log.rows) == 2
+
+
+def test_f2_frametime_exactly_0_1_ms_is_kept(tmp_path):
+    log = parse(tmp_path, [GOOD_BEFORE, row(0.1, START_NS + 25 * MS), GOOD_AFTER])
+    assert log.bad_rows == 0
+    assert [r["frametime"] for r in log.rows] == [25.0, 0.1, 25.0]

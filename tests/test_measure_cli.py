@@ -29,6 +29,7 @@ import os
 
 import pytest
 from test_measure_support import (
+    COLUMNS,
     MS,
     S,
     START_NS,
@@ -175,7 +176,11 @@ def test_m10_wilds_shaped_log_full_report(tmp_path, capsys):
         "real_avg_fps": 24.8,
         "real_is_estimate": False,
         "real_low_1pct_fps": 24.8,
-        "reasons": ["average 24.8 fps is below 30", "1% low 24.8 fps is below 28"],
+        "reasons": [
+            "average 24.8 fps is below 30",
+            "1% low 24.8 fps is below 28",
+            "worst minute averaged 24.8 fps, below 30",  # item 19 F4
+        ],
         "slower_than": {"35": 1.0, "30": 1.0, "28": 1.0},
         "stalls": [],
         "system": SYSTEM,
@@ -518,3 +523,42 @@ def test_c15_module_adds_no_logging_handlers_fresh_interpreter(tmp_path):
     result = run_python(["-c", probe, str(path)])
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip().splitlines()[-1] == "HANDLERS 0 0"
+
+
+# ---- item 19 F2 / F3: JSON stays JSON; no_gpu_data explained ------------------------
+
+
+def strict_json(text):
+    def refuse(constant):
+        raise AssertionError(f"non-JSON constant {constant} in output")
+
+    return json.loads(text, parse_constant=refuse)
+
+
+def test_f2_tiny_frametimes_give_valid_json_and_no_pass(tmp_path, capsys):
+    lines = [row("1e-320", START_NS + i * 25 * MS) for i in range(6000)]
+    path = write_log(tmp_path, lines)
+    code, out, err = run_cli(measure, ["--json", str(path)], capsys)
+    assert code == 0, err
+    r = strict_json(out)
+    assert r["bad_rows"] == 6000
+    assert r["frames"] == 0
+    assert r["verdict"] == "not_enough_data"
+
+
+@pytest.mark.parametrize("n", [0, 1, 300])
+def test_f2_json_never_contains_nan_or_infinity(tmp_path, capsys, n):
+    path = write_log(tmp_path, steady(n))
+    code, out, err = run_cli(measure, ["--json", str(path)], capsys)
+    assert code == 0, err
+    assert set(strict_json(out)) == KEYS
+    for token in ("NaN", "Infinity"):
+        assert token not in out
+
+
+def test_f3_text_explains_no_gpu_data(tmp_path, capsys):
+    cols = [c for c in COLUMNS if c != "gpu_load"]
+    lines = [row(25.0, START_NS + i * 500 * MS, columns=cols) for i in range(300)]
+    path = write_log(tmp_path, lines, columns=cols)
+    out = text_report(capsys, [str(path)])
+    assert "can't tell menus from gameplay without GPU load" in out

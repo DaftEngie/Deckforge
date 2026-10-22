@@ -497,14 +497,14 @@ def assert_empty_report(r):
     assert r["slower_than"] == {}
     assert r["limit"] == "unknown"
     assert r["verdict"] == "not_enough_data"
-    assert r["reasons"] == ["fewer than 300 frames"]  # C18 replaces C2's []
     assert r["hitches"] == 0
 
 
 def test_c2_header_only_log(tmp_path):
     r = report(tmp_path, [])
     assert_empty_report(r)
-    assert r["warnings"] == ["few_frames"]
+    assert r["reasons"] == ["fewer than 300 frames"]  # C18 replaces C2's []
+    assert r["warnings"] == ["few_frames"]  # 0 data rows: no bad share to exceed
     assert r["stalls"] == []
     assert r["artifact_rows"] == 0
     assert r["bad_rows"] == 0
@@ -515,7 +515,9 @@ def test_c2_all_rows_bad(tmp_path):
     assert_empty_report(r)
     assert r["bad_rows"] == 2
     assert r["first_bad_line"] == 4
-    assert r["warnings"] == ["few_frames", "bad_rows"]
+    # item 19 F5: 2 bad of 2 data rows is > 5%, so its warning and reason are added
+    assert r["warnings"] == ["few_frames", "bad_rows", "too_many_bad_rows"]
+    assert r["reasons"] == ["fewer than 300 frames", "more than 5% of rows were unreadable"]
 
 
 def test_c2_only_an_artifact_row(tmp_path):
@@ -523,6 +525,7 @@ def test_c2_only_an_artifact_row(tmp_path):
     assert_empty_report(r)
     assert r["artifact_rows"] == 1
     assert r["warnings"] == ["few_frames", "artifact_rows"]
+    assert r["reasons"] == ["fewer than 300 frames"]
 
 
 @pytest.mark.parametrize(("fg", "expected"), [(1, False), (2, True)])
@@ -535,4 +538,5 @@ def test_c17_real_is_estimate_is_bool_when_no_frames(tmp_path, fg, expected):
 def test_c2_empty_log_with_frame_generation_does_not_divide(tmp_path):
     r = report(tmp_path, [], fg=4)
     assert_empty_report(r)
+    assert r["reasons"] == ["fewer than 300 frames"]
     assert r["fg_multiplier"] == 4
