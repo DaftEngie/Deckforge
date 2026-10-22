@@ -435,3 +435,10 @@ the answer wins.
     and its `frametime` and `gpu_load` are in range. The 24 h jump check is not used to
     choose it, which keeps parsing to one pass. This only matters in a contrived
     three-row pattern around a jump of more than 24 h. That pattern is accepted as is.
+24. **Decided after the fifth verifier review, 2026-10-21.** The spike rule also covers
+    the first data row. Having no previous non-bad row, the first row is bad if its
+    `elapsed` is greater than the next data row's (as defined in item 23).
+    - Why: one damaged first-row `elapsed` made 1,100 following rows bad, which hid a
+      slow opening stretch, and the log was rated gold.
+    - Known limit, accepted: a spike on the last row is kept. That inflates the reported
+      `duration_s`, but `short_log` subtracts the gap, so it cannot cause a wrong pass.
