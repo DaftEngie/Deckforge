@@ -1,9 +1,11 @@
 # DeckForge — agent map
 
 DeckForge tunes demanding PC games for the Steam Deck **in handheld mode**.
-Target: a locked 45 fps (22.2 ms frame time) with the best image quality that fits
-in that budget. Frame generation (Lossless Scaling / lsfg-vk) is tracked separately
-and never counts toward the native target. Owner: Fede (not a software engineer;
+Target (docs/decisions/0002): what the player sees, frame generation allowed.
+Gold = locked 35 fps at 70 Hz; good enough = steady 30-35 with 1% low >= 28 and real
+frames' 1% low >= 14; best image quality above Fede's quality floors. Real (native)
+fps is always measured and reported separately and is never called native when
+frame generation produced it. Owner: Fede (not a software engineer;
 he reviews evidence and behavior, not code).
 
 Read first, every session: `state/progress.md` (tail), the active spec in `docs/specs/`.
