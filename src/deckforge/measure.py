@@ -72,6 +72,11 @@ WARNING_TEXT = {  # M8, M10
     "bad_rows": "some rows were unreadable and were skipped",
     "artifact_rows": "some rows had an impossible frame time (a MangoHud glitch) and were skipped",
 }
+NOT_ENOUGH_DATA_TEXT = {  # C18: one reason per cause, in warning order
+    "short_log": f"log is shorter than {SHORT_LOG_S:g} s",
+    "likely_loading_or_menus": "the graphics chip was mostly idle, likely loading or menus",
+    "few_frames": f"fewer than {TARGET['min_frames']} frames",
+}
 VERDICT_TEXT = {  # M9
     "gold": "GOLD: meets the gold target",
     "good_enough": "GOOD ENOUGH: meets the good-enough target",
@@ -384,15 +389,25 @@ def _warnings(
     return [name for name, applies in checks if applies]
 
 
-def _floor_1(value: float) -> str:
-    """C11: round down to 1 decimal for reason strings."""
-    return f"{math.floor(value * 10) / 10:.1f}"
+def _reason_number(value: float, threshold: float) -> str:
+    """C18: the report's round(x, 1), or round-down if that would reach the threshold."""
+    shown = round(value, 1)
+    if shown >= threshold:
+        shown = math.floor(value * 10) / 10
+    return f"{shown:.1f}"
 
 
-def _verdict(frames: int, avg: float, low: float, real_low: float) -> tuple[str, list[str]]:
-    """M9, C1, C11: verdict and reasons from unrounded values."""
-    if frames < TARGET["min_frames"]:
-        return "not_enough_data", []
+def _verdict(
+    warnings: list[str], avg: float | None, low: float | None, real_low: float | None
+) -> tuple[str, list[str]]:
+    """M9, C1, C11, C18: verdict and reasons from unrounded values.
+
+    Any unrepresentative-log warning (N = 0 always has few_frames) -> not_enough_data,
+    with one reason per cause.
+    """
+    causes = [NOT_ENOUGH_DATA_TEXT[name] for name in warnings if name in NOT_ENOUGH_DATA_TEXT]
+    if causes:
+        return "not_enough_data", causes
     floor_ok = real_low >= TARGET["real_low_floor"]
     if avg >= TARGET["gold_avg"] and low >= TARGET["gold_low"] and floor_ok:
         return "gold", []
@@ -403,7 +418,7 @@ def _verdict(frames: int, avg: float, low: float, real_low: float) -> tuple[str,
         (low, TARGET["good_low"], "1% low {} fps is below {:g}"),
         (real_low, TARGET["real_low_floor"], "real-frame 1% low {} fps is below {:g}"),
     ]
-    reasons = [text.format(_floor_1(v), t) for v, t, text in tests if v < t]
+    reasons = [text.format(_reason_number(v, t), t) for v, t, text in tests if v < t]
     return "fail", reasons
 
 
@@ -473,10 +488,6 @@ def analyze(log: MangoLog, *, fg_multiplier: int = 1) -> dict:
     kept, artifact_rows = _split_artifacts(log.rows)
     m = _frame_metrics(kept, fg_multiplier) if kept else _empty_metrics()
     limit, share = _limit(kept, log.columns)
-    if kept:
-        verdict, reasons = _verdict(len(kept), m["avg"], m["low"], m["real_low"])
-    else:
-        verdict, reasons = "not_enough_data", []
     warnings = _warnings(
         m["duration_s"],
         m["short_window"],
@@ -485,6 +496,7 @@ def analyze(log: MangoLog, *, fg_multiplier: int = 1) -> dict:
         log.bad_rows,
         artifact_rows,
     )
+    verdict, reasons = _verdict(warnings, m["avg"], m["low"], m["real_low"])
     duration_s = None if m["duration_s"] is None else round(m["duration_s"], 1)
     return {
         **m["report"],
