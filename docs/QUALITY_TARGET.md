@@ -3,12 +3,21 @@
 Decided 2026-10-08. Handheld mode on a Steam Deck OLED is the baseline. TV play is
 handled by streaming (Steam Link), not by DeckForge.
 
-## Objective
-1. **Constraint:** median frame time <= 22.2 ms (45 fps), with a 99th-percentile
-   guard set per game after its first profile.
-2. **Maximize:** image quality within that budget.
-3. **Separate track:** frame generation (lsfg-vk / Lossless Scaling, owned) from a
-   45 fps base to 90 Hz on OLED. Logged as "presented fps"; never counted as native.
+## Objective (revised 2026-10-21, docs/decisions/0002-experience-target.md)
+1. **Constraint, on what the player sees (frame generation allowed):**
+   - **Gold:** locked 35 fps at 70 Hz.
+   - **Good enough:** steady 30-35 fps, 1% low >= 28 fps, and real frames' 1% low
+     >= 14 fps.
+2. **Maximize:** image quality above Fede's quality floors. The defaults are textures
+   High, upscaler Performance or better, and frame generation on. Cuts go least
+   visible first.
+3. **Always reported separately:** real (native) fps. Never call a result native
+   when frame generation produced it.
+
+The original objective (locked 45 fps native, frame generation as a separate track)
+was dropped after the first real Wilds measurement: 24.8 fps average, GPU-bound.
+Sections below describe the longer-term image-scoring and lever plan. Where they
+mention 45 fps, read the current constraint above.
 
 ## How image quality is scored
 - **Reference:** the same scene rendered on the Deck itself at maximum settings and
