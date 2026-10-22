@@ -399,3 +399,14 @@ the answer wins.
       result.
       - Performance bound: a log of 100,000 rows with one 23-hour gap is analysed in
         under 5 s.
+21. **Decided after the third verifier review, 2026-10-21.**
+    - **Short logs are judged on playing time.** `short_log` applies when
+      `duration_s` − (sum of `stalls[].duration_s` between kept rows, unrounded) is
+      below `SHORT_LOG_S`. Stalls are counted only when both rows are kept, and each
+      stall is counted once. The reported `duration_s` and the worst-minute logic are
+      unchanged.
+      - Why: one damaged `elapsed` near the end of a 50 s log, or a 10-minute suspend
+        followed by one frame, made the log look long enough to be rated gold.
+    - **The text report never crashes on a file name.** It prints the file name with
+      non-UTF-8 bytes shown as backslash escapes, so even a strict UTF-8 stdout
+      can't fail.
