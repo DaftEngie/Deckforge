@@ -98,18 +98,24 @@ def spread(frametimes, gpu_load=89) -> list[str]:
 
 
 def front_loaded(frametimes, gpu_load=89) -> list[str]:
-    """Same frame times, laid out so no 60 s window is slower than the whole log (F4).
+    """Same frame times, laid out so no 60 s window is slower than the whole log (F4),
+    with no stalls, so playing time = duration_s >= 120 s (item 21).
 
-    Frames are sorted slowest first, 100 ms apart from rel 0 s (all inside the first
-    window), and one slowest frame is moved to rel 120.0 s. Window 0 is then the log
-    minus one slowest frame and later windows are faster tails of it, so worst_window
-    never drops below the overall average. duration_s is exactly 120.0 (not short_log).
+    Frames at or below the mean frame time ("front") are spread evenly over [0, 120) s,
+    under 1 s apart; every window [s, s + 60) for s = 0 .. 60 holds only front frames,
+    so its average is at least the overall average. Frames slower than the mean
+    ("tail") sit 1 ms apart from rel 120.0 s, after the last window ends. If every frame
+    equals the mean, one is moved to the tail so the log reaches 120 s.
     """
-    ordered = sorted(frametimes, reverse=True)
-    body, last = ordered[1:], ordered[0]
-    assert len(body) <= 600, "body must fit inside the first 60 s window"
-    lines = [row(ft, START_NS + i * 100 * MS, gpu_load) for i, ft in enumerate(body)]
-    lines.append(row(last, START_NS + 120 * S, gpu_load))
+    mean = sum(frametimes) / len(frametimes)
+    front = sorted(ft for ft in frametimes if ft <= mean)
+    tail = sorted(ft for ft in frametimes if ft > mean)
+    if not tail:
+        tail = [front.pop()]
+    assert len(front) > 120, "front frames must be under 1 s apart over 120 s"
+    step = 120 * S // len(front)
+    lines = [row(ft, START_NS + i * step, gpu_load) for i, ft in enumerate(front)]
+    lines += [row(ft, START_NS + 120 * S + i * MS, gpu_load) for i, ft in enumerate(tail)]
     return lines
 
 
@@ -189,14 +195,14 @@ def run_cli(measure, argv, capsys):
     return code, captured.out, captured.err
 
 
-def run_module(args, timeout=60):
+def run_module(args, timeout=60, env_extra=None):
     """Run `python -m deckforge.measure` in a subprocess with src on the path."""
-    return run_python(["-m", "deckforge.measure", *args], timeout)
+    return run_python(["-m", "deckforge.measure", *args], timeout, env_extra)
 
 
-def run_python(args, timeout=60):
+def run_python(args, timeout=60, env_extra=None):
     """Run a fresh interpreter with src on the path; never raises on a non-zero exit."""
-    env = dict(os.environ, PYTHONPATH=str(REPO / "src"))
+    env = dict(os.environ, PYTHONPATH=str(REPO / "src"), **(env_extra or {}))
     return subprocess.run(
         [sys.executable, *args],
         capture_output=True,

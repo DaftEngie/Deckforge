@@ -34,12 +34,18 @@ Item 19 (F3-F5), binding over the above where they differ:
     reason "more than 5% of rows were unreadable", last among the C18 reasons.
   - no gpu_load column adds warning no_gpu_data at the very end; it never blocks a pass.
   Mixed-frame fixtures use front_loaded() so no window is slower than the whole log.
+
+Item 21: short_log is judged on playing time = duration_s - (sum of stall durations
+  between two kept rows, unrounded); duration_s and the worst minute are unchanged.
+  front_loaded() therefore has no stalls (gaps under 1 s, playing time >= 120 s).
 """
 
+import pytest
 from test_measure_support import (
     COLUMNS,
     MS,
     START_NS,
+    S,
     cumulative,
     front_loaded,
     grid,
@@ -176,15 +182,13 @@ def test_m9_good_enough_at_exact_avg_threshold(tmp_path):
 
 
 def test_m9_fail_just_below_good_avg_although_it_rounds_to_30(tmp_path):
-    # sum 199*32.5 + 101*35 = 10002.5 -> avg 29.9925. Worst minute (F4) = all but one
-    # 35 ms frame: 299000 / 9967.5 = 29.9975, which rounds to 30.0, so floor -> 29.9.
+    # sum 199*32.5 + 101*35 = 10002.5 -> avg 29.9925. front_loaded keeps the 35 ms
+    # frames out of every window, so the worst minute is 1000/32.5 = 30.77 (passes).
     r = report(tmp_path, mix((199, 32.5), (101, 35.0)))
     assert r["avg_fps"] == 30.0
+    assert r["worst_window"]["avg_fps"] == 30.8
     assert r["verdict"] == "fail"
-    assert r["reasons"] == [
-        "average 29.9 fps is below 30",
-        "worst minute averaged 29.9 fps, below 30",
-    ]
+    assert r["reasons"] == ["average 29.9 fps is below 30"]
 
 
 def test_m9_good_enough_at_exact_low_threshold(tmp_path):
@@ -560,3 +564,71 @@ def test_c20_out_of_range_gpu_counts_toward_bad_share(tmp_path):
     assert "too_many_bad_rows" in r["warnings"]
     assert r["verdict"] == "not_enough_data"
     assert r["reasons"] == [BAD_SHARE]
+
+
+# ---- item 21: short_log is judged on playing time -----------------------------------
+
+
+@pytest.mark.parametrize(
+    ("extra_ns", "duration", "stall"),
+    [(900 * S, 950.0, 900.0), (23 * 3600 * S, 82850.0, 82800.0)],
+    ids=["plus_900_s", "plus_23_h"],
+)
+def test_c21_damaged_last_elapsed_keeps_50_s_log_short(tmp_path, extra_ns, duration, stall):
+    # 2001 rows at 25 ms (0 .. 50 s, 40 fps, GPU busy); the last row's elapsed is pushed
+    # forward. Playing time = duration - stall = 49.975 s < 120.
+    lines = [row(25.0, i * 25 * MS, gpu_load=95) for i in range(2000)]
+    lines.append(row(25.0, 2000 * 25 * MS + extra_ns, gpu_load=95))
+    r = report(tmp_path, lines)
+    assert r["frames"] == 2001
+    assert r["duration_s"] == duration
+    assert r["stalls"] == [{"at_s": 50.0, "duration_s": stall}]
+    assert "short_log" in r["warnings"]
+    assert r["verdict"] == "not_enough_data"
+    assert r["reasons"] == [SHORT]
+
+
+def two_blocks(second_rows, gap_s=30):
+    """0 .. 60 s at 25 ms (2401 rows), a gap_s stall, then second_rows rows at 25 ms."""
+    lines = [row(25.0, k * 25 * MS) for k in range(2401)]
+    start = (60 + gap_s) * S
+    return lines + [row(25.0, start + k * 25 * MS) for k in range(second_rows)]
+
+
+def test_c21_playing_time_exactly_120_s_with_a_stall_is_not_short(tmp_path):
+    r = report(tmp_path, two_blocks(2401))  # 150 s - 30 s stall = 120.0 s playing
+    assert r["duration_s"] == 150.0
+    assert r["stalls"] == [{"at_s": 60.0, "duration_s": 30.0}]
+    assert "short_log" not in r["warnings"]
+    assert r["verdict"] == "gold"
+
+
+def test_c21_playing_time_just_under_120_s_with_a_stall_is_short(tmp_path):
+    r = report(tmp_path, two_blocks(2400))  # 149.975 s - 30 s = 119.975 s playing
+    assert r["stalls"] == [{"at_s": 60.0, "duration_s": 30.0}]
+    assert "short_log" in r["warnings"]
+    assert r["verdict"] == "not_enough_data"
+    assert r["reasons"] == [SHORT]
+
+
+def test_c21_long_healthy_log_with_10_minute_stall_judged_normally(tmp_path):
+    # 0 .. 150 s, a 600 s suspend, 750 .. 900 s; all at 40 fps: 300 s playing.
+    lines = [row(25.0, k * 25 * MS) for k in range(6001)]
+    lines += [row(25.0, 750 * S + k * 25 * MS) for k in range(6001)]
+    r = report(tmp_path, lines)
+    assert r["duration_s"] == 900.0
+    assert r["stalls"] == [{"at_s": 150.0, "duration_s": 600.0}]
+    assert r["warnings"] == []
+    assert r["verdict"] == "gold"
+
+
+def test_c21_stall_to_an_artifact_is_not_subtracted(tmp_path):
+    # 0 .. 130 s kept, then an artifact 30 s later: that stall is not between two kept
+    # rows, so playing time = duration_s = 130 s (not 100 s).
+    lines = [row(25.0, k * 25 * MS) for k in range(5201)]
+    lines.append(row(ARTIFACT, 160 * S))
+    r = report(tmp_path, lines)
+    assert r["duration_s"] == 130.0
+    assert r["stalls"] == [{"at_s": 130.0, "duration_s": 30.0}]
+    assert "short_log" not in r["warnings"]
+    assert r["verdict"] == "gold"

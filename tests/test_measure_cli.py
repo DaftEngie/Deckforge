@@ -586,3 +586,16 @@ def test_c20_elapsed_1e19_finishes_fast_exit_0(tmp_path):
     r = json.loads(result.stdout)
     assert r["bad_rows"] == 1
     assert r["frames"] == 8000
+
+
+# ---- item 21: the text report never crashes on a file name --------------------------
+
+
+def test_c21_non_utf8_file_name_in_text_report_with_strict_stdout(tmp_path):
+    path = tmp_path / os.fsdecode(b"Game\xff_2026.csv")  # surrogate-escaped on Linux
+    path.write_bytes(log_text(steady(300)).encode("utf-8"))
+    assert os.fsencode(path.name) == b"Game\xff_2026.csv"
+    result = run_module([str(path)], env_extra={"PYTHONIOENCODING": "utf-8:strict"})
+    assert result.returncode == 0, result.stderr
+    assert "Traceback" not in result.stderr
+    assert "Game\\xff_2026.csv" in result.stdout
