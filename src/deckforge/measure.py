@@ -42,6 +42,8 @@ GPU_MEAN_LO = 75
 LOADING_GPU_MEAN = 50
 SHORT_LOG_S = 120
 SLOWER_THAN = (35, 30, 28)
+MIN_FRAMETIME_MS = 0.1  # item 19 F2: no game frame takes under 0.1 ms
+MAX_BAD_SHARE = 0.05  # item 19 F5: more bad rows than this share -> no verdict
 
 # ---- Module-internal constants (values fixed by the spec, names are ours) -----------
 
@@ -70,12 +72,17 @@ WARNING_TEXT = {  # M8, M10
     ),
     "few_frames": f"fewer than {TARGET['min_frames']} frames, too few for a verdict",
     "bad_rows": "some rows were unreadable and were skipped",
+    "too_many_bad_rows": (
+        f"more than {MAX_BAD_SHARE * 100:g}% of rows were unreadable, too many for a verdict"
+    ),
     "artifact_rows": "some rows had an impossible frame time (a MangoHud glitch) and were skipped",
+    "no_gpu_data": "can't tell menus from gameplay without GPU load",
 }
 NOT_ENOUGH_DATA_TEXT = {  # C18: one reason per cause, in warning order
     "short_log": f"log is shorter than {SHORT_LOG_S:g} s",
     "likely_loading_or_menus": "the graphics chip was mostly idle, likely loading or menus",
     "few_frames": f"fewer than {TARGET['min_frames']} frames",
+    "too_many_bad_rows": f"more than {MAX_BAD_SHARE * 100:g}% of rows were unreadable",
 }
 VERDICT_TEXT = {  # M9
     "gold": "GOLD: meets the gold target",
@@ -164,12 +171,16 @@ def _fields(line: str) -> list[str]:
 
 
 def _parse_header(path: str, lines: list[str]) -> tuple[dict[str, str], list[str]]:
-    """M1, C9: line 1 names + line 2 values -> system; line 3 -> columns."""
+    """M1, C9, item 19 F1: line 1 names + line 2 values -> system; line 3 -> columns."""
     if len(lines) < 3:
         raise MeasureError(f"{path!r} has fewer than 3 lines, so it is not a MangoHud log")
-    names, values = _fields(lines[0]), _fields(lines[1])
+    try:
+        names, values, column_fields = [_fields(line) for line in lines[:3]]
+    except csv.Error as exc:
+        logger.debug("csv rejected a header line (1-3) of %r: %s", path, exc)
+        raise MeasureError(f"{path!r} header (lines 1-3) is unreadable: {exc}") from exc
     system = dict(zip(names, values, strict=True)) if len(names) == len(values) else {}
-    columns = [name.strip() for name in _fields(lines[2])]
+    columns = [name.strip() for name in column_fields]
     missing = [name for name in REQUIRED_COLUMNS if name not in columns]
     if missing:
         raise MeasureError(f"{path!r} line 3 lacks required column(s): {', '.join(missing)}")
@@ -196,8 +207,8 @@ def _parse_row(line: str, columns: list[str]) -> dict[str, float] | None:
 
 
 def _is_bad(values: dict[str, float] | None, previous_elapsed: float | None) -> bool:
-    """M1 + C8: unreadable, frametime <= 0, elapsed < 0, or elapsed going backwards."""
-    if values is None or values["frametime"] <= 0 or values["elapsed"] < 0:
+    """M1, C8, F2: unreadable, frametime < MIN_FRAMETIME_MS, elapsed < 0, or going back."""
+    if values is None or values["frametime"] < MIN_FRAMETIME_MS or values["elapsed"] < 0:
         return True
     return previous_elapsed is not None and values["elapsed"] < previous_elapsed
 
@@ -213,7 +224,11 @@ def parse_log(path) -> MangoLog:
     for number, line in enumerate(lines[3:], start=4):
         if not line.strip():  # C9: blank lines are skipped, not bad
             continue
-        values = _parse_row(line, columns)
+        try:
+            values = _parse_row(line, columns)
+        except csv.Error as exc:  # item 19 F1: a row the csv module rejects is a bad row
+            logger.debug("csv rejected %r line %d: %s", path, number, exc)
+            values = None
         if _is_bad(values, rows[-1]["elapsed"] if rows else None):
             bad_rows += 1
             if first_bad_line is None:
@@ -325,8 +340,8 @@ def _gpu_mean(kept: list[dict[str, float]], columns: list[str]) -> float | None:
 # ---- M7: worst minute ---------------------------------------------------------------
 
 
-def _worst_window(kept: list[dict[str, float]]) -> tuple[dict[str, float], bool]:
-    """M7, C10: return (worst window, short_window flag).
+def _worst_window(kept: list[dict[str, float]]) -> tuple[dict[str, float], bool, float]:
+    """M7, C10: return (worst window, short_window flag, its unrounded avg fps).
 
     Windows of WINDOW_S start every WINDOW_STEP_S from the first kept row while
     start + WINDOW_S <= duration and cover [start, start + WINDOW_S). Empty windows are
@@ -339,7 +354,7 @@ def _worst_window(kept: list[dict[str, float]]) -> tuple[dict[str, float], bool]
     duration = rel[-1]
     width = WINDOW_S * NS_PER_S
     if duration < width:
-        return _window_result(0, frametimes), True
+        return _window_result(0, frametimes), True, _avg_fps(frametimes)
     best = None
     lo = hi = 0
     start = 0
@@ -353,8 +368,8 @@ def _worst_window(kept: list[dict[str, float]]) -> tuple[dict[str, float], bool]
             if best is None or avg < best[0]:
                 best = (avg, start, lo, hi)
         start += WINDOW_STEP_S * NS_PER_S
-    _, start, lo, hi = best
-    return _window_result(start, frametimes[lo:hi]), False
+    avg, start, lo, hi = best
+    return _window_result(start, frametimes[lo:hi]), False, avg
 
 
 def _window_result(start_ns: int, frametimes: list[float]) -> dict[str, float]:
@@ -375,16 +390,23 @@ def _warnings(
     gpu_mean: float | None,
     frames: int,
     bad_rows: int,
+    data_rows: int,
     artifact_rows: int,
+    has_gpu_data: bool,
 ) -> list[str]:
-    """M8: each warning that applies, in the spec's order."""
+    """M8, item 19 F3, F5: each warning that applies, in the spec's order.
+
+    ``data_rows`` is bad plus non-bad data rows, blank lines excluded.
+    """
     checks = [
         ("short_log", duration_s is not None and duration_s < SHORT_LOG_S),
         ("short_window", short_window),
         ("likely_loading_or_menus", gpu_mean is not None and gpu_mean < LOADING_GPU_MEAN),
         ("few_frames", frames < TARGET["min_frames"]),
         ("bad_rows", bad_rows > 0),
+        ("too_many_bad_rows", data_rows > 0 and bad_rows / data_rows > MAX_BAD_SHARE),
         ("artifact_rows", artifact_rows > 0),
+        ("no_gpu_data", not has_gpu_data),
     ]
     return [name for name, applies in checks if applies]
 
@@ -398,9 +420,13 @@ def _reason_number(value: float, threshold: float) -> str:
 
 
 def _verdict(
-    warnings: list[str], avg: float | None, low: float | None, real_low: float | None
+    warnings: list[str],
+    avg: float | None,
+    low: float | None,
+    real_low: float | None,
+    worst_avg: float | None,
 ) -> tuple[str, list[str]]:
-    """M9, C1, C11, C18: verdict and reasons from unrounded values.
+    """M9, C1, C11, C18, item 19 F4: verdict and reasons from unrounded values.
 
     Any unrepresentative-log warning (N = 0 always has few_frames) -> not_enough_data,
     with one reason per cause.
@@ -409,14 +435,16 @@ def _verdict(
     if causes:
         return "not_enough_data", causes
     floor_ok = real_low >= TARGET["real_low_floor"]
-    if avg >= TARGET["gold_avg"] and low >= TARGET["gold_low"] and floor_ok:
+    gold_avg, good_avg = TARGET["gold_avg"], TARGET["good_avg"]
+    if avg >= gold_avg and low >= TARGET["gold_low"] and floor_ok and worst_avg >= gold_avg:
         return "gold", []
-    if avg >= TARGET["good_avg"] and low >= TARGET["good_low"] and floor_ok:
+    if avg >= good_avg and low >= TARGET["good_low"] and floor_ok and worst_avg >= good_avg:
         return "good_enough", []
     tests = [
         (avg, TARGET["good_avg"], "average {} fps is below {:g}"),
         (low, TARGET["good_low"], "1% low {} fps is below {:g}"),
         (real_low, TARGET["real_low_floor"], "real-frame 1% low {} fps is below {:g}"),
+        (worst_avg, good_avg, "worst minute averaged {} fps, below {:g}"),
     ]
     reasons = [text.format(_reason_number(v, t), t) for v, t, text in tests if v < t]
     return "fail", reasons
@@ -441,11 +469,12 @@ def _frame_metrics(kept: list[dict[str, float]], fg_multiplier: int) -> dict:
     ordered = sorted(frametimes)
     avg = _avg_fps(frametimes)
     low = _low_1pct_fps(ordered)
-    worst, short_window = _worst_window(kept)
+    worst, short_window, worst_avg = _worst_window(kept)
     return {
         "avg": avg,
         "low": low,
         "real_low": low / fg_multiplier,
+        "worst_avg": worst_avg,
         "duration_s": (kept[-1]["elapsed"] - kept[0]["elapsed"]) / NS_PER_S,
         "short_window": short_window,
         "report": {
@@ -467,6 +496,7 @@ def _empty_metrics() -> dict:
         "avg": None,
         "low": None,
         "real_low": None,
+        "worst_avg": None,
         "duration_s": None,
         "short_window": False,
         "report": {
@@ -494,9 +524,11 @@ def analyze(log: MangoLog, *, fg_multiplier: int = 1) -> dict:
         _gpu_mean(kept, log.columns),
         len(kept),
         log.bad_rows,
+        log.bad_rows + len(log.rows),
         artifact_rows,
+        "gpu_load" in log.columns,
     )
-    verdict, reasons = _verdict(warnings, m["avg"], m["low"], m["real_low"])
+    verdict, reasons = _verdict(warnings, m["avg"], m["low"], m["real_low"], m["worst_avg"])
     duration_s = None if m["duration_s"] is None else round(m["duration_s"], 1)
     return {
         **m["report"],
@@ -629,7 +661,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"deckforge.measure: {message}", file=sys.stderr)
         return 2
     if args.json:
-        sys.stdout.write(json.dumps(report, indent=2, sort_keys=True) + "\n")
+        sys.stdout.write(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n")
     else:
         sys.stdout.write(format_text(report))
     return 0
