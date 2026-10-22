@@ -12,7 +12,8 @@ analyze(log, *, fg_multiplier=1) -> dict
       ARTIFACT_MS. Artifacts count in artifact_rows and are excluded from every metric.
                                                                                  [C6]
     - stalls: every elapsed gap > GAP_NS between consecutive non-bad rows (kept or
-      artifact), as {"at_s", "duration_s"}; at_s from the first KEPT row.        [M3, C7]
+      artifact), as {"at_s", "duration_s"}; at_s from the first NON-BAD row, so never
+      negative (C17 replaces C7 for stalls only).                           [M3, C7, C17]
     - hitches: kept frames with frametime > HITCH_MS.                            [M3]
     - frames = N kept; duration_s = (last kept - first kept elapsed) / 1e9.       [M4, C7]
     - avg_fps = 1000 N / sum(F); P(k/1000) = sorted(F)[(k N + 999) // 1000 - 1];
@@ -27,7 +28,8 @@ analyze(log, *, fg_multiplier=1) -> dict
       kept-relative 0, 5, 10 ... while start + 60 <= duration_s; empty windows skipped;
       earliest wins ties; whole session (start 0) if duration_s < 60.            [M7, C10]
     - N = 0: frames 0; fps fields, real_avg/low, duration_s, gpu_busy_share and
-      worst_window None; slower_than {}; limit "unknown"; verdict not_enough_data.  [C2]
+      worst_window None; slower_than {}; limit "unknown"; verdict not_enough_data;
+      real_is_estimate is still the bool fg_multiplier > 1.                     [C2, C17]
     - Rounding: fps, duration_s, stall times, start_s -> round(x, 1); shares -> round(x, 3).
   Invariants: analyze never mutates the log and never touches the disk.
 """
@@ -305,15 +307,43 @@ def test_c7_stall_ignores_bad_rows(tmp_path):
     assert r["stalls"] == [{"at_s": 0.0, "duration_s": 1.8}]
 
 
-def test_c7_times_measured_from_first_kept_row_not_first_artifact(tmp_path):
-    # artifact at 0 s; kept 0.5 .. 10.5 s; 2 s stall; kept 12.5 .. 22.5 s
+def test_c7_duration_from_first_kept_row_c17_stall_from_first_non_bad_row(tmp_path):
+    # artifact at 0 s (first non-bad row); kept 0.5 .. 10.5 s; 2 s stall; kept 12.5 .. 22.5 s.
+    # C17: stall at_s counts from the artifact (10.5); duration_s still from the first
+    # kept row (22.5 - 0.5 = 22.0).
     lines = [row(ARTIFACT, 0)]
     lines += steady(401, start_ns=500 * MS)
     lines += steady(401, start_ns=12_500 * MS)
     r = report(tmp_path, lines)
     assert r["artifact_rows"] == 1
-    assert r["stalls"] == [{"at_s": 10.0, "duration_s": 2.0}]
+    assert r["stalls"] == [{"at_s": 10.5, "duration_s": 2.0}]
     assert r["duration_s"] == 22.0
+
+
+def test_c17_stall_before_first_kept_row_measured_from_first_non_bad_row(tmp_path):
+    # line 4: bad row (nan) at -5 s; line 5: artifact at 0 s (first non-bad row);
+    # line 6: artifact at 0.5 s (2.2e7 > 2 x 500 ms); 2.0 s stall; kept 2.5 .. 12.5 s;
+    # 1.5 s stall; kept 14.0 .. 15.0 s. Times relative to the first non-bad row (0 s):
+    #   stall 1: at 0.5, lasts 2.0   (from the first kept row it would be -2.0)
+    #   stall 2: at 12.5, lasts 1.5  (from the first kept row it would be 10.0)
+    # duration_s stays first kept -> last kept: 15.0 - 2.5 = 12.5.
+    lines = [
+        row("nan", START_NS - 5 * S),
+        row(ARTIFACT, START_NS),
+        row(ARTIFACT, START_NS + 500 * MS),
+    ]
+    lines += steady(401, start_ns=START_NS + 2_500 * MS)  # 2.5 .. 12.5 s
+    lines += steady(41, start_ns=START_NS + 14 * S)  # 14.0 .. 15.0 s
+    r = report(tmp_path, lines)
+    assert r["bad_rows"] == 1
+    assert r["artifact_rows"] == 2
+    assert r["frames"] == 442
+    assert r["stalls"] == [
+        {"at_s": 0.5, "duration_s": 2.0},
+        {"at_s": 12.5, "duration_s": 1.5},
+    ]
+    assert all(stall["at_s"] >= 0 for stall in r["stalls"])
+    assert r["duration_s"] == 12.5
 
 
 def test_c7_duration_ends_at_last_kept_row_and_stall_to_artifact_counts(tmp_path):
@@ -492,6 +522,13 @@ def test_c2_only_an_artifact_row(tmp_path):
     assert_empty_report(r)
     assert r["artifact_rows"] == 1
     assert r["warnings"] == ["few_frames", "artifact_rows"]
+
+
+@pytest.mark.parametrize(("fg", "expected"), [(1, False), (2, True)])
+def test_c17_real_is_estimate_is_bool_when_no_frames(tmp_path, fg, expected):
+    r = report(tmp_path, [], fg=fg)
+    assert r["frames"] == 0
+    assert r["real_is_estimate"] is expected
 
 
 def test_c2_empty_log_with_frame_generation_does_not_divide(tmp_path):

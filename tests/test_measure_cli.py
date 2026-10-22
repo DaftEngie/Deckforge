@@ -274,6 +274,11 @@ def test_m10_measure_error_summary_file_exit_2_one_line(tmp_path, capsys):
     assert_one_line_error(*run_cli(measure, ["--json", str(path)], capsys))
 
 
+def test_c17_nonexistent_path_exit_2_one_line(tmp_path, capsys):
+    missing = tmp_path / "no_such_log.csv"
+    assert_one_line_error(*run_cli(measure, ["--json", str(missing)], capsys))
+
+
 def test_m10_measure_error_not_a_regular_file_exit_2_one_line(tmp_path, capsys):
     folder = tmp_path / "folder.csv"
     folder.mkdir()

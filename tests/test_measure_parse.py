@@ -4,6 +4,7 @@ CONTRACTS (written from the spec before any implementation exists)
 
 parse_log(path) -> MangoLog
   Preconditions (each violation raises MeasureError with one clear message):
+    - path exists (else MeasureError).                                          [C17]
     - lstat(path) shows a regular file (links, folders, FIFOs, sockets, devices refused),
       checked before opening, so a FIFO never blocks.                           [M1, C14]
     - lstat size <= 64 MiB (exactly 64 MiB is allowed).                          [M1, C14]
@@ -16,7 +17,8 @@ parse_log(path) -> MangoLog
       bad_rows, first_bad_line.
     - system maps line 1 names to line 2 values; {} on a length mismatch.
     - columns == line 3 split on commas (a UTF-8 BOM on line 1 is removed; CRLF accepted).
-    - rows: every non-bad data row, in file order, as {column: float}.
+    - rows: every non-bad data row, in file order, as {column: float}; artifact rows
+      are included (classifying them is analyze's job).                     [C17]
     - bad_rows counts rows with a wrong field count, a field that fails float(), a NaN
       or infinite field, frametime <= 0, elapsed < 0, or elapsed lower than the
       previous non-bad row's.                                                   [M1, C8]
@@ -167,6 +169,20 @@ def test_m1_summary_csv_refused_and_message_points_to_frame_log(tmp_path):
     with pytest.raises(measure.MeasureError) as excinfo:
         measure.parse_log(str(path))
     assert "frame log" in str(excinfo.value).lower()
+
+
+def test_c17_nonexistent_path_raises(tmp_path):
+    assert_refused(tmp_path / "no_such_log.csv")
+
+
+def test_c17_rows_include_artifact_rows(tmp_path):
+    artifact = 22_000_000.0
+    lines = [row(artifact, START_NS)]  # first row: an artifact
+    lines += [row(25.0, START_NS + 25 * MS), row(artifact, START_NS + 50 * MS)]
+    lines.append(row(25.0, START_NS + 75 * MS))
+    log = parse(tmp_path, lines)
+    assert log.bad_rows == 0
+    assert [r["frametime"] for r in log.rows] == [artifact, 25.0, artifact, 25.0]
 
 
 def test_m1_directory_is_not_a_regular_file(tmp_path):
