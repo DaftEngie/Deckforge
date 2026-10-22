@@ -1,6 +1,6 @@
 """Read one MangoHud frame-time log and report how the session played.
 
-Spec: docs/specs/measure.md (M1-M12 plus clarifier items 1-21, which win where they
+Spec: docs/specs/measure.md (M1-M12 plus clarifier items 1-22, which win where they
 differ). The target comes from decision 0002. This module only reads: it never creates,
 changes or deletes a file (M12), and it adds no logging handlers (C15).
 
@@ -208,19 +208,30 @@ def _parse_row(line: str, columns: list[str]) -> dict[str, float] | None:
     return values
 
 
-def _is_bad(values: dict[str, float] | None, previous_elapsed: float | None) -> bool:
-    """M1, C8, F2, item 20: unreadable, frametime < MIN_FRAMETIME_MS, elapsed < 0,
-    gpu_load (when present) outside [GPU_LOAD_MIN, GPU_LOAD_MAX], or elapsed going back
-    or jumping more than MAX_JUMP_NS past the previous non-bad row.
+def _fails_row_checks(values: dict[str, float] | None) -> bool:
+    """M1, C8, F2, item 20: unreadable, frametime < MIN_FRAMETIME_MS, elapsed < 0, or
+    gpu_load (when present) outside [GPU_LOAD_MIN, GPU_LOAD_MAX]. Needs no other row.
     """
     if values is None or values["frametime"] < MIN_FRAMETIME_MS or values["elapsed"] < 0:
         return True
-    if "gpu_load" in values and not GPU_LOAD_MIN <= values["gpu_load"] <= GPU_LOAD_MAX:
-        return True
+    return "gpu_load" in values and not GPU_LOAD_MIN <= values["gpu_load"] <= GPU_LOAD_MAX
+
+
+def _is_bad(
+    values: dict[str, float],
+    previous_elapsed: float | None,
+    next_elapsed: float | None,
+) -> bool:
+    """C8, item 20, item 22 for a row that passes the row checks: elapsed going back or
+    jumping more than MAX_JUMP_NS past the previous non-bad row, or a lone forward spike
+    (above the next data row, which is itself not below the previous non-bad row).
+    """
     if previous_elapsed is None:
         return False
     step = values["elapsed"] - previous_elapsed
-    return step < 0 or step > MAX_JUMP_NS
+    if step < 0 or step > MAX_JUMP_NS:
+        return True
+    return next_elapsed is not None and values["elapsed"] > next_elapsed >= previous_elapsed
 
 
 def parse_log(path) -> MangoLog:
@@ -228,9 +239,7 @@ def parse_log(path) -> MangoLog:
     path = str(path)
     lines = _split_lines(_read_text(path))
     system, columns = _parse_header(path, lines)
-    rows: list[dict[str, float]] = []
-    bad_rows = 0
-    first_bad_line = None
+    data: list[tuple[int, dict[str, float] | None]] = []
     for number, line in enumerate(lines[3:], start=4):
         if not line.strip():  # C9: blank lines are skipped, not bad
             continue
@@ -239,7 +248,18 @@ def parse_log(path) -> MangoLog:
         except csv.Error as exc:  # item 19 F1: a row the csv module rejects is a bad row
             logger.debug("csv rejected %r line %d: %s", path, number, exc)
             values = None
-        if _is_bad(values, rows[-1]["elapsed"] if rows else None):
+        data.append((number, None if _fails_row_checks(values) else values))
+    # Item 22: elapsed of the next row passing the row checks, filled in one backward pass.
+    next_elapsed: list[float | None] = [None] * len(data)
+    for index in range(len(data) - 2, -1, -1):
+        following = data[index + 1][1]
+        next_elapsed[index] = next_elapsed[index + 1] if following is None else following["elapsed"]
+    rows: list[dict[str, float]] = []
+    bad_rows = 0
+    first_bad_line = None
+    for (number, values), after in zip(data, next_elapsed, strict=True):
+        previous = rows[-1]["elapsed"] if rows else None
+        if values is None or _is_bad(values, previous, after):
             bad_rows += 1
             if first_bad_line is None:
                 first_bad_line = number  # C17: physical line, blanks included
@@ -296,13 +316,15 @@ def _stalls(rows: list[dict[str, float]]) -> list[dict[str, float]]:
     return stalls
 
 
-def _stall_s_between_kept(rows: list[dict[str, float]], kept: list[dict[str, float]]) -> float:
-    """Item 21: unrounded seconds of stalls whose two rows are both kept (not artifacts)."""
-    kept_ids = {id(values) for values in kept}
+def _stall_s_between_kept(kept: list[dict[str, float]]) -> float:
+    """Items 21, 22: unrounded seconds of gaps > GAP_NS between consecutive kept rows.
+
+    Artifact and bad rows between two kept rows are ignored.
+    """
     total = 0
-    for earlier, later in zip(rows, rows[1:], strict=False):
+    for earlier, later in zip(kept, kept[1:], strict=False):
         gap = later["elapsed"] - earlier["elapsed"]
-        if gap > GAP_NS and id(earlier) in kept_ids and id(later) in kept_ids:
+        if gap > GAP_NS:
             total += gap
     return total / NS_PER_S
 
@@ -433,7 +455,7 @@ def _warnings(
 ) -> list[str]:
     """M8, item 19 F3, F5: each warning that applies, in the spec's order.
 
-    ``playing_s`` is duration_s minus stalls between two kept rows (item 21).
+    ``playing_s`` is duration_s minus gaps between consecutive kept rows (items 21, 22).
     ``data_rows`` is bad plus non-bad data rows, blank lines excluded.
     """
     checks = [
@@ -558,7 +580,7 @@ def analyze(log: MangoLog, *, fg_multiplier: int = 1) -> dict:
     limit, share = _limit(kept, log.columns)
     playing_s = None
     if m["duration_s"] is not None:
-        playing_s = m["duration_s"] - _stall_s_between_kept(log.rows, kept)
+        playing_s = m["duration_s"] - _stall_s_between_kept(kept)
     warnings = _warnings(
         playing_s,
         m["short_window"],
