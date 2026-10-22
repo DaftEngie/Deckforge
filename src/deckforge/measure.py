@@ -1,6 +1,6 @@
 """Read one MangoHud frame-time log and report how the session played.
 
-Spec: docs/specs/measure.md (M1-M12 plus clarifier answers C1-C17, which win where they
+Spec: docs/specs/measure.md (M1-M12 plus clarifier items 1-20, which win where they
 differ). The target comes from decision 0002. This module only reads: it never creates,
 changes or deletes a file (M12), and it adds no logging handlers (C15).
 
@@ -39,11 +39,13 @@ GPU_BUSY_PCT = 90
 GPU_SHARE_HI = 0.6
 GPU_SHARE_LO = 0.2
 GPU_MEAN_LO = 75
+GPU_LOAD_MIN, GPU_LOAD_MAX = 0, 100  # item 20: gpu_load outside this range is a bad row
 LOADING_GPU_MEAN = 50
 SHORT_LOG_S = 120
 SLOWER_THAN = (35, 30, 28)
 MIN_FRAMETIME_MS = 0.1  # item 19 F2: no game frame takes under 0.1 ms
 MAX_BAD_SHARE = 0.05  # item 19 F5: more bad rows than this share -> no verdict
+MAX_JUMP_NS = 86_400_000_000_000  # item 20: a forward elapsed jump over 24 h is a bad row
 
 # ---- Module-internal constants (values fixed by the spec, names are ours) -----------
 
@@ -207,10 +209,18 @@ def _parse_row(line: str, columns: list[str]) -> dict[str, float] | None:
 
 
 def _is_bad(values: dict[str, float] | None, previous_elapsed: float | None) -> bool:
-    """M1, C8, F2: unreadable, frametime < MIN_FRAMETIME_MS, elapsed < 0, or going back."""
+    """M1, C8, F2, item 20: unreadable, frametime < MIN_FRAMETIME_MS, elapsed < 0,
+    gpu_load (when present) outside [GPU_LOAD_MIN, GPU_LOAD_MAX], or elapsed going back
+    or jumping more than MAX_JUMP_NS past the previous non-bad row.
+    """
     if values is None or values["frametime"] < MIN_FRAMETIME_MS or values["elapsed"] < 0:
         return True
-    return previous_elapsed is not None and values["elapsed"] < previous_elapsed
+    if "gpu_load" in values and not GPU_LOAD_MIN <= values["gpu_load"] <= GPU_LOAD_MAX:
+        return True
+    if previous_elapsed is None:
+        return False
+    step = values["elapsed"] - previous_elapsed
+    return step < 0 or step > MAX_JUMP_NS
 
 
 def parse_log(path) -> MangoLog:
@@ -346,7 +356,8 @@ def _worst_window(kept: list[dict[str, float]]) -> tuple[dict[str, float], bool,
     Windows of WINDOW_S start every WINDOW_STEP_S from the first kept row while
     start + WINDOW_S <= duration and cover [start, start + WINDOW_S). Empty windows are
     skipped; the lowest unrounded avg wins, ties to the earliest. A session shorter than
-    WINDOW_S is one window starting at 0.
+    WINDOW_S is one window starting at 0. Item 20: an empty window jumps straight to the
+    first aligned start whose window can hold the next row (same result, no stepping).
     """
     origin = kept[0]["elapsed"]
     rel = [values["elapsed"] - origin for values in kept]
@@ -356,6 +367,7 @@ def _worst_window(kept: list[dict[str, float]]) -> tuple[dict[str, float], bool,
     if duration < width:
         return _window_result(0, frametimes), True, _avg_fps(frametimes)
     best = None
+    step = WINDOW_STEP_S * NS_PER_S
     lo = hi = 0
     start = 0
     while start + width <= duration:
@@ -367,9 +379,23 @@ def _worst_window(kept: list[dict[str, float]]) -> tuple[dict[str, float], bool,
             avg = _avg_fps(frametimes[lo:hi])
             if best is None or avg < best[0]:
                 best = (avg, start, lo, hi)
-        start += WINDOW_STEP_S * NS_PER_S
+            start += step
+        else:
+            start = _next_start_holding(rel[lo], start, step, width)
     avg, start, lo, hi = best
     return _window_result(start, frametimes[lo:hi]), False, avg
+
+
+def _next_start_holding(t: float, start: int, step: int, width: int) -> int:
+    """Item 20: smallest multiple of step after start whose window [s, s + width) can
+    hold time t (s + width > t). Int-float comparisons are exact; the loops fix rounding.
+    """
+    k = max(int((t - width) // step) + 1, start // step + 1)
+    while (k - 1) * step > start and (k - 1) * step + width > t:
+        k -= 1
+    while k * step + width <= t:
+        k += 1
+    return k * step
 
 
 def _window_result(start_ns: int, frametimes: list[float]) -> dict[str, float]:
