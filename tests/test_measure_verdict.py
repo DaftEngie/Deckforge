@@ -588,24 +588,28 @@ def test_c21_damaged_last_elapsed_keeps_50_s_log_short(tmp_path, extra_ns, durat
     assert r["reasons"] == [SHORT]
 
 
-def two_blocks(second_rows, gap_s=30):
-    """0 .. 60 s at 25 ms (2401 rows), a gap_s stall, then second_rows rows at 25 ms."""
+def two_blocks(second_rows, gap_s=70):
+    """0 .. 60 s at 25 ms (2401 rows), a gap_s stall, then second_rows rows at 25 ms.
+
+    The 70 s default is a pause (> FREEZE_MAX_S, item 26), so these tests keep testing
+    the playing-time boundary only (it was 30 s before item 26, now a freeze).
+    """
     lines = [row(25.0, k * 25 * MS) for k in range(2401)]
     start = (60 + gap_s) * S
     return lines + [row(25.0, start + k * 25 * MS) for k in range(second_rows)]
 
 
 def test_c21_playing_time_exactly_120_s_with_a_stall_is_not_short(tmp_path):
-    r = report(tmp_path, two_blocks(2401))  # 150 s - 30 s stall = 120.0 s playing
-    assert r["duration_s"] == 150.0
-    assert r["stalls"] == [{"at_s": 60.0, "duration_s": 30.0}]
+    r = report(tmp_path, two_blocks(2401))  # 190 s - 70 s pause = 120.0 s playing
+    assert r["duration_s"] == 190.0
+    assert r["stalls"] == [{"at_s": 60.0, "duration_s": 70.0}]
     assert "short_log" not in r["warnings"]
     assert r["verdict"] == "gold"
 
 
 def test_c21_playing_time_just_under_120_s_with_a_stall_is_short(tmp_path):
-    r = report(tmp_path, two_blocks(2400))  # 149.975 s - 30 s = 119.975 s playing
-    assert r["stalls"] == [{"at_s": 60.0, "duration_s": 30.0}]
+    r = report(tmp_path, two_blocks(2400))  # 189.975 s - 70 s = 119.975 s playing
+    assert r["stalls"] == [{"at_s": 60.0, "duration_s": 70.0}]
     assert "short_log" in r["warnings"]
     assert r["verdict"] == "not_enough_data"
     assert r["reasons"] == [SHORT]
@@ -761,6 +765,17 @@ def verifier_round6(first_row_lowered_ns=0):
     return lines
 
 
+# Item 26: lowering the first row by 2.5 s or 4.0 s opens a 2.525 s / 4.025 s gap between
+# the first two kept rows. That is a freeze (<= 60 s, between first and last kept rows),
+# so its reason is added last; 0.9 s leaves a 0.925 s gap, which is not a stall.
+FIRST_ROW_FREEZE = {
+    0: [],
+    900: [],
+    2500: ["the game stopped drawing for 2.5 s at 0.0 s"],
+    4000: ["the game stopped drawing for 4.0 s at 0.0 s"],
+}
+
+
 @pytest.mark.parametrize("lowered_ms", [0, 900, 2500, 4000])
 def test_c25_slow_minute_fails_wherever_the_first_row_sits(tmp_path, lowered_ms):
     # N 25791, sum 24000*25 + 1791*33.5 = 659998.5 ms -> avg 39.1. P99 index 25533 lands
@@ -776,7 +791,8 @@ def test_c25_slow_minute_fails_wherever_the_first_row_sits(tmp_path, lowered_ms)
     assert r["worst_window"]["avg_fps"] == 29.9
     assert r["worst_window"]["low_1pct_fps"] == 29.9
     assert r["verdict"] == "fail"
-    assert r["reasons"] == ["worst minute averaged 29.9 fps, below 30"]
+    expected = ["worst minute averaged 29.9 fps, below 30"] + FIRST_ROW_FREEZE[lowered_ms]
+    assert r["reasons"] == expected
 
 
 def test_c25_verifier_clean_log_worst_minute_start(tmp_path):
@@ -784,3 +800,132 @@ def test_c25_verifier_clean_log_worst_minute_start(tmp_path):
     # row) and the first slow row (300.0085 s); both round to 300.0.
     r = report(tmp_path, verifier_round6())
     assert r["worst_window"]["start_s"] == 300.0
+
+
+# ---- item 26: short stalls inside play are freezes ----------------------------------
+
+
+def blocks(*spans, ft=25.0, gpu_load=89):
+    """blocks((start_s, end_s), ...) -> rows every ft ms from start_s to end_s inclusive.
+
+    Every row carries frametime ft, so gaps between blocks change no fps metric: only
+    stalls, playing time and (item 26) freezes see them.
+    """
+    step = round(ft * MS)
+    lines = []
+    for start, end in spans:
+        first, last = round(start * S), round(end * S)
+        lines += [row(ft, t, gpu_load) for t in range(first, last + 1, step)]
+    return lines
+
+
+def freeze_reason(d, t):
+    return f"the game stopped drawing for {d} s at {t} s"
+
+
+def test_c26_freeze_max_constant():
+    assert measure.FREEZE_MAX_S == 60
+
+
+def round6(closing_frametime):
+    """Verifier round 6, as written: 5400 rows at 1000/36 ms from 10 ms; before row 2700
+    the game freezes for 20 s and MangoHud logs the next frame with closing_frametime."""
+    ft = 1000 / 36
+    lines, elapsed = [], 10_000_000
+    for i in range(150 * 36):
+        frametime = ft
+        if i == 2700:
+            elapsed += 20 * S
+            frametime = closing_frametime
+        elapsed += ft * MS
+        lines.append(row(f"{frametime:.6g}", int(elapsed), gpu_load=95))
+    return lines
+
+
+def test_c26_freeze_closed_by_artifact_fails(tmp_path):
+    # The closing frame 2.2269e7 ms is an artifact, so every fps metric is 36.0 and the
+    # worst minute passes; only the freeze fails it. Gap 20.028 s -> 20.0, from row
+    # 2699 at (75010 - 37.78) ms after the first row -> 75.0.
+    r = report(tmp_path, round6(2.2269e7))
+    assert r["artifact_rows"] == 1
+    assert r["frames"] == 5399
+    assert r["avg_fps"] == 36.0
+    assert r["worst_window"]["avg_fps"] == 36.0
+    assert r["stalls"] == [{"at_s": 75.0, "duration_s": 20.0}]
+    assert r["verdict"] == "fail"
+    assert r["reasons"] == [freeze_reason("20.0", "75.0")]
+
+
+def test_c26_freeze_with_real_frametime_also_fails(tmp_path):
+    # The closing frame keeps its real 20027.8 ms (not > 2 x the 20028 ms gap): kept.
+    # avg 5400000 / 170000 = 31.76 (>= 30); worst minute = ~1440 frames + the 20 s
+    # frame -> 24.0. Both reasons, freeze last.
+    r = report(tmp_path, round6(20_000 + 1000 / 36))
+    assert r["artifact_rows"] == 0
+    assert r["frames"] == 5400
+    assert r["hitches"] == 1
+    assert r["verdict"] == "fail"
+    assert r["reasons"] == [
+        "worst minute averaged 24.0 fps, below 30",
+        freeze_reason("20.0", "75.0"),
+    ]
+
+
+def test_c26_stall_of_exactly_60_s_is_a_freeze(tmp_path):
+    # 0 .. 150 s, nothing for exactly 60.0 s, 210 .. 360 s; all 25 ms frames.
+    r = report(tmp_path, blocks((0, 150), (210, 360)))
+    assert r["stalls"] == [{"at_s": 150.0, "duration_s": 60.0}]
+    assert r["verdict"] == "fail"
+    assert r["reasons"] == [freeze_reason("60.0", "150.0")]
+
+
+def test_c26_stall_just_over_60_s_is_a_pause(tmp_path):
+    # Same, but the gap is 60 s + 1 us (unrounded > FREEZE_MAX_S): a pause. It still
+    # shows as 60.0 in stalls; playing time 300 s; otherwise gold.
+    lines = blocks((0, 150))
+    lines += [row(25.0, 210 * S + 1000 + k * 25 * MS) for k in range(6001)]
+    r = report(tmp_path, lines)
+    assert r["stalls"] == [{"at_s": 150.0, "duration_s": 60.0}]
+    assert r["verdict"] == "gold"
+    assert r["reasons"] == []
+
+
+def test_c26_stall_before_first_kept_row_is_not_a_freeze(tmp_path):
+    # An artifact at 0 s (launch glitch), 5 s of nothing, then 150 s of play.
+    lines = [row(ARTIFACT, 0)] + blocks((5, 155))
+    r = report(tmp_path, lines)
+    assert r["stalls"] == [{"at_s": 0.0, "duration_s": 5.0}]
+    assert r["verdict"] == "gold"
+
+
+def test_c26_stall_after_last_kept_row_is_not_a_freeze(tmp_path):
+    # 150 s of play, then 5 s of nothing and an artifact as the last row (exit).
+    lines = blocks((0, 150)) + [row(ARTIFACT, 155 * S)]
+    r = report(tmp_path, lines)
+    assert r["stalls"] == [{"at_s": 150.0, "duration_s": 5.0}]
+    assert r["verdict"] == "gold"
+
+
+def test_c26_longest_freeze_named_and_ties_go_earliest(tmp_path):
+    # Freezes of 5 s at 50 s, 12 s at 100 s and 12 s at 150 s; playing time 271 s.
+    r = report(tmp_path, blocks((0, 50), (55, 100), (112, 150), (162, 300)))
+    assert r["stalls"] == [
+        {"at_s": 50.0, "duration_s": 5.0},
+        {"at_s": 100.0, "duration_s": 12.0},
+        {"at_s": 150.0, "duration_s": 12.0},
+    ]
+    assert r["verdict"] == "fail"
+    assert r["reasons"] == [freeze_reason("12.0", "100.0")]
+
+
+def test_c26_freeze_reason_comes_after_other_fail_reasons(tmp_path):
+    # 20 fps (50 ms) everywhere with frame generation x2, and a 10 s freeze at 100 s.
+    r = report(tmp_path, blocks((0, 100), (110, 250), ft=50.0), fg=2)
+    assert r["verdict"] == "fail"
+    assert r["reasons"] == [
+        "average 20.0 fps is below 30",
+        "1% low 20.0 fps is below 28",
+        "real-frame 1% low 10.0 fps is below 14",
+        "worst minute averaged 20.0 fps, below 30",
+        freeze_reason("10.0", "100.0"),
+    ]
