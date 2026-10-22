@@ -386,3 +386,16 @@ the answer wins.
       "can't tell menus from gameplay without GPU load". It does not block a pass. A
       game capped at 35 fps with the chip half idle is a real pass, so `not_gpu` alone
       must not block one.
+20. **Decided after the second verifier review, 2026-10-21.** A damaged value in any
+    column the verdict reads must not change the verdict, crash the tool or freeze it.
+    - **`gpu_load` out of range.** When the `gpu_load` column exists, a row whose
+      `gpu_load` is below 0 or above 100 is a bad row (M1/C8). F5 still applies when
+      this happens often.
+    - **Absurd forward jump.** A row whose `elapsed` is more than
+      `MAX_JUMP_NS = 86_400_000_000_000` (24 h) after the previous non-bad row is a bad
+      row. The next rows are then compared with that same previous non-bad row.
+    - **Speed.** Finding the worst minute must not step through empty stretches one at a
+      time. Skipping straight to the first window that can contain a row gives the same
+      result.
+      - Performance bound: a log of 100,000 rows with one 23-hour gap is analysed in
+        under 5 s.
