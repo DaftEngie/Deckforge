@@ -442,3 +442,22 @@ the answer wins.
       slow opening stretch, and the log was rated gold.
     - Known limit, accepted: a spike on the last row is kept. That inflates the reported
       `duration_s`, but `short_log` subtracts the gap, so it cannot cause a wrong pass.
+25. **Decided after the sixth verifier review, 2026-10-21: the worst minute is a true
+    sliding window.** This replaces the 5 s grid in M7 and C10.
+    - **Candidates:** a window may start at the elapsed time of **every kept row**, as
+      long as start + `WINDOW_S` ≤ the last kept row's elapsed. Each window covers
+      [start, start + `WINDOW_S`) and contains kept rows only.
+    - **Choice:** the window with the lowest unrounded average wins. On a tie, the
+      earliest start wins. `start_s` is that row's elapsed time minus the first kept
+      row's, rounded to 0.1.
+    - **Short sessions:** if no candidate qualifies, the whole session is one window,
+      `start_s` is 0 and `short_window` applies, as before.
+    - **Speed:** linear time, using two pointers with running sums. The 1% low is
+      computed only for the chosen window. The item 20 bound (100,000 rows in under
+      5 s) still applies.
+    - `WINDOW_STEP_S` is no longer used to choose windows. The constant may stay for
+      compatibility.
+    - Why: windows on a 5 s grid tied to the first row could miss a slow minute that
+      sat between grid steps. One slightly low first-row timestamp (0.9 s) shifted the
+      grid and turned a 29.9 fps worst minute into 30.0–30.3, a wrong good_enough. A
+      clean log could miss its worst minute the same way.
