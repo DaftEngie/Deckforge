@@ -323,3 +323,13 @@ the answer wins.
 16. **Rows are frames.** MangoHud calls `try_log()` once per presented frame
     (`src/overlay.cpp`, in `update_hud_info_with_frametime`). Fede's log agrees:
     7,428 rows over 299.9 s at 24.8 fps.
+17. **Decided after the tests were written, 2026-10-21.**
+    - `real_is_estimate` is always a bool: `fg_multiplier > 1`. It is set even when
+      N = 0.
+    - `MangoLog.rows` holds every non-bad row, artifacts included. Classifying artifacts
+      is `analyze`'s job.
+    - A path that doesn't exist → `MeasureError` (exit 2).
+    - `stalls[].at_s` is measured from the first **non-bad** row, so it is never
+      negative. This replaces C7 for stalls only. Durations and windows still use the
+      first kept row.
+    - `first_bad_line` counts physical file lines, blank lines included.
