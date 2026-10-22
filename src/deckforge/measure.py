@@ -1,6 +1,6 @@
 """Read one MangoHud frame-time log and report how the session played.
 
-Spec: docs/specs/measure.md (M1-M12 plus clarifier items 1-22, which win where they
+Spec: docs/specs/measure.md (M1-M12 plus clarifier items 1-24, which win where they
 differ). The target comes from decision 0002. This module only reads: it never creates,
 changes or deletes a file (M12), and it adds no logging handlers (C15).
 
@@ -225,9 +225,10 @@ def _is_bad(
     """C8, item 20, item 22 for a row that passes the row checks: elapsed going back or
     jumping more than MAX_JUMP_NS past the previous non-bad row, or a lone forward spike
     (above the next data row, which is itself not below the previous non-bad row).
+    Item 24: with no previous non-bad row, a row is bad if it is above the next data row.
     """
     if previous_elapsed is None:
-        return False
+        return next_elapsed is not None and values["elapsed"] > next_elapsed
     step = values["elapsed"] - previous_elapsed
     if step < 0 or step > MAX_JUMP_NS:
         return True
