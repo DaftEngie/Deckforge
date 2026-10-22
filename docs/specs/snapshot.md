@@ -124,3 +124,10 @@ The file paths are read through module-level constants, so tests can redirect th
    - A refused `out_dir` is checked before anything is created.
    - Links named `*.csv` are not logs.
    - `scan.json` ends with `"\n"`.
+
+4. Decided after the verifier review (2026-10-21, verifier F1/W1/W2/W3/N1):
+   - **F1, same appid in two libraries.** The first card of an appid, in `games` order, keeps `settings/<appid>/<n>_<basename>`. The second and later cards use `settings/<appid>-<k>/<n>_<basename>`, with k = 2, 3, and so on. Zip member names are never duplicated.
+   - **W1, logs folder.** `<home>/deckforge/logs` is added to the S8 refusal list.
+   - **W2, non-Steam shortcuts.** compatdata and shadercache entries whose appid is 2147483648 or higher belong to non-Steam shortcuts. They are not orphans. They go into a separate top-level `non_steam` list in `sizes.json`, `{"path", "size"}` per entry, so they can never be read as cleanup candidates.
+   - **W3, linked plugin folders.** An entry in `homebrew/plugins` that is a link, or not a folder, adds a `plugin_folder_not_regular` issue (path = the entry). It is not silently dropped.
+   - **N1, bad out_dir.** An `out_dir` that exists as a file, or that cannot be created, raises `SnapshotError` (CLI exit 2, one line), not a traceback.
