@@ -430,3 +430,8 @@ the answer wins.
         That hid a 20 fps stretch, and the log was rated gold.
       - Known limit, accepted: two or more consecutive spiked rows still drop the rows
         after them, and F5 forces `not_enough_data` when that passes 5%.
+23. **Clarification of item 22, 2026-10-21.** The "next data row" for the spike rule is
+    the next row that passes the single-row checks: it parses, its values are finite,
+    and its `frametime` and `gpu_load` are in range. The 24 h jump check is not used to
+    choose it, which keeps parsing to one pass. This only matters in a contrived
+    three-row pattern around a jump of more than 24 h. That pattern is accepted as is.
