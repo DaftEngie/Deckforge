@@ -240,3 +240,90 @@ Expected:
 - The other games are `no_map`, or mapped where they use Unreal.
 
 ## Clarifier questions and answers (filled before tests are written)
+Reviewed 2026-10-22 by the clarifier. These answers are binding and win over S1–S10.
+
+1. **New type `number`.** A float, with optional `min` and `max`. It is `known` when the
+   value parses as a finite float and lies within whichever bounds are given.
+   - Wilds `[Graphics/FSR3] Sharpness` and DD2 `UpscalingSharpness` are `number` with no
+     bounds.
+   - Wilds `ImageQualityRate` is `enum ["1"]`.
+2. **Seen values and types.**
+   - A knob with only one value seen is `enum`, not `level`.
+   - A `bool` lists both spellings of a matching pair: `True`/`False`, `true`/`false` or
+     `ON`/`OFF`. The spelling that was not seen is still allowed.
+   - `level` is used only where the order is documented: Unreal, values `"0"`–`"4"`.
+   - Tests must include a value outside the list, giving `mapped_with_unknown_values`.
+3. **One knob per concrete key.** No wildcards. When one menu option covers several
+   keys, the label is repeated on each knob (for example "Bloom (enable)" and
+   "Bloom (level)").
+4. **Wilds fixture.**
+   - It includes `[Graphics]`, `[Graphics/FSR3]`, `[Graphics/RayTracing]` and
+     `[RenderConfig]`.
+   - The map reads only the sections it names. `[RenderConfig]` is never used; the test
+     proves it by giving `[RenderConfig]` a different value for a key that also exists
+     in `[Graphics]`.
+   - The spec records that which section the game honours is **unconfirmed**.
+5. **DD2 knobs, exact keys in `[AppOption]`.**
+
+   | Key | Type | Values |
+   |---|---|---|
+   | `UpscalingAlgorithm` | enum | `FSR3` |
+   | `UpscalingQuality` | enum | `Balanced` |
+   | `UpscalingSharpness` | number | |
+   | `FSR3_FrameGeneraion` (sic) | bool | `OFF`/`ON` |
+   | `TextureQuality` | enum | `High` |
+   | `ShadowQuality` | enum | `Low` |
+   | `FrameRate` | enum | `Max60` |
+   | `VSync` | bool | `OFF`/`ON` |
+
+   Source note: "key names only, no menu evidence; Fede's DD2 config.ini 2026-10-21".
+6. **Status, checked in this order:**
+   1. `unreadable`: there was at least one non-registry settings file, every one failed
+      S1, and no map matched.
+   2. `no_map`: no settings file matched a map. This includes no settings files at all,
+      or only registry files.
+   3. `mapped_empty`: maps matched, but zero knobs are present.
+   4. `mapped_with_unknown_values`: a present knob is not `known`.
+   5. `mapped`: otherwise.
+
+   Mixed games, where one file is mapped and another is not (`Engine.ini`), get the
+   mapped status, with the other file listed in `unmapped_files`.
+7. **Empty value.** `key=` gives `present: true, value: "", known: false`.
+8. **Frozen key sets.**
+   - **Game:** `appid, name, engine, anticheat, status, maps, unmapped_files, issues`.
+     `engine` and `anticheat` are copied verbatim from the card. "Lists anti-cheat"
+     means a non-empty `anticheat` list. A map's `engine` is a label only and is not
+     checked against the card.
+   - **Map entry:** `map_id, file, encoding, duplicates, knobs`. `duplicates` is a list
+     of `[section, key]`.
+   - **Knob:** `id, label, section, key, type, present, value, known, confidence`.
+   - **Issue:** `code, path`, plus `why`, `map_id` or `knob` where a code uses them.
+9. **Locating maps.** Maps are found by path: the `maps` folder next to `settings.py`.
+   Finding zero maps raises `SettingsError`.
+10. **Case.** Sections, keys and values are compared case-sensitively and exactly. Only
+    `file_name` matching ignores case.
+11. **Repeated section header.** Its keys merge into the first occurrence, and the first
+    value wins. Each repeated key is recorded in `duplicates`.
+12. **Several files matching the same map.** Each is reported separately with its
+    `file`. If the same knob is present with different values in two of them, the
+    issue `{"code": "conflicting_files", "path": <first file>, "map_id", "knob"}` is
+    added. Neither file is chosen.
+13. **Unreal values.**
+    - Level values are `"0"`–`"4"`, where 4 is Cinematic, documented by Epic.
+    - `sg.ResolutionQuality` is known only as a plain integer string from 10 to 100.
+      `"100.000000"` is **not** known.
+14. **Encodings.**
+    - A UTF-16 BOM with a decode failure → the issue `settings_unreadable`. There is no
+      Latin-1 fallback for UTF-16.
+    - Files without a BOM: UTF-8, then Latin-1, as in S1.
+15. **File names.** Fixtures use the real base names (`config.ini`,
+    `GameUserSettings.ini`), not the snapshot's numbered names.
+16. **Other kinds.** Unity `boot.config` and any other non-registry file are parsed and
+    land in `unmapped_files`.
+17. **Read while the game runs.** Size and mtime (ns) are recorded before and after
+    reading. If either differs, the issue `changed_during_read` is added and the
+    values are still reported.
+18. **Reuse (R13).** Opening files reuses the existing lstat + `O_NOFOLLOW` approach in
+    `snapshot.py` / `measure.py`. Shared code is factored only if it can be done
+    without changing those modules' behaviour; otherwise it follows the same pattern,
+    and the PR says why.
