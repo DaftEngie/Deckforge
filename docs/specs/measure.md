@@ -461,3 +461,23 @@ the answer wins.
       sat between grid steps. One slightly low first-row timestamp (0.9 s) shifted the
       grid and turned a 29.9 fps worst minute into 30.0–30.3, a wrong good_enough. A
       clean log could miss its worst minute the same way.
+26. **Decided after the sixth verifier review, 2026-10-21: short stalls are freezes.**
+    - A stall (M3, any gap over `GAP_NS` between consecutive non-bad rows) lasting at
+      most `FREEZE_MAX_S = 60` seconds is a **freeze**. The game stopped drawing in the
+      middle of play.
+    - Longer stalls are treated as pauses, such as the Deck sleeping or the game
+      suspended. They count as now: listed in `stalls`, subtracted from playing time,
+      not failed.
+    - **A freeze blocks gold and good_enough.**
+      - The `fail` reason goes last: `"the game stopped drawing for {d} s at {t} s"`.
+        It describes the longest freeze, where `{d}` is its `duration_s` formatted
+        `.1f` and `{t}` is its `at_s` formatted `.1f`.
+      - Ties go to the earliest.
+      - The other fail reasons are listed too, if they apply.
+    - **Not counted as freezes:** stalls before the first kept row or after the last
+      kept row. These are the launch or the exit.
+    - Why: a 20 s freeze whose closing frame was a MangoHud uptime glitch (an artifact
+      row) left no trace in any metric, and the log was rated gold. With a real frame
+      time the same freeze fails the worst minute, so the two must agree.
+    - Known limit: a real freeze longer than 60 s looks the same as a pause. In the log
+      alone the two cannot be told apart.
