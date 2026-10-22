@@ -24,9 +24,11 @@ analyze(log, *, fg_multiplier=1) -> dict
       real_is_estimate = m > 1.                                                  [M5, C4]
     - limit / gpu_busy_share from kept rows' gpu_load (>= 90 busy; >= 0.6 gpu;
       < 0.2 and mean < 75 not_gpu; else mixed; no column -> unknown, share None).  [M6]
-    - worst_window: lowest unrounded avg over [start, start + 60) windows starting at
-      kept-relative 0, 5, 10 ... while start + 60 <= duration_s; empty windows skipped;
-      earliest wins ties; whole session (start 0) if duration_s < 60.            [M7, C10]
+    - worst_window (item 25, replacing the 5 s grid of M7/C10): a window may start at
+      the elapsed of EVERY kept row while start + 60 <= last kept elapsed; it covers
+      [start, start + 60) over kept rows; lowest unrounded avg wins, earliest start on
+      a tie; start_s = that row's elapsed - first kept elapsed; whole session (start 0)
+      plus short_window if no candidate qualifies.                    [M7, C10, C25]
     - N = 0: frames 0; fps fields, real_avg/low, duration_s, gpu_busy_share and
       worst_window None; slower_than {}; limit "unknown"; verdict not_enough_data;
       real_is_estimate is still the bool fg_multiplier > 1; reasons are exactly
@@ -435,12 +437,14 @@ def test_m7_worst_window_is_lowest_avg(tmp_path):
 
 
 def test_c10_tie_goes_to_earliest_on_unrounded_avg(tmp_path):
-    # 125 s at 25 ms; one 26 ms frame at rel 100.05 s. Windows 45..65 contain it and
-    # tie at 2400000/60001 = 39.9993 (rounds to 40.0 like every other window).
+    # 125 s at 25 ms; one 26 ms frame at rel 100.05 s. Item 25: every window starting at
+    # a row from 40.075 s (first row with start + 60 > 100.05) to 65 s holds 2400 rows
+    # including it and ties at 2400000/60001 = 39.9993 (rounds to 40.0 like the rest).
+    # Earliest is 40.075 -> 40.1 (was 45.0 on the 5 s grid).
     frametimes = [25.0] * 5001
     frametimes[4002] = 26.0
     r = report(tmp_path, grid(frametimes, start_ns=0))
-    assert r["worst_window"] == {"start_s": 45.0, "avg_fps": 40.0, "low_1pct_fps": 40.0}
+    assert r["worst_window"] == {"start_s": 40.1, "avg_fps": 40.0, "low_1pct_fps": 40.0}
 
 
 def test_c10_constant_session_worst_window_is_the_first(tmp_path):
@@ -448,13 +452,14 @@ def test_c10_constant_session_worst_window_is_the_first(tmp_path):
     assert r["worst_window"] == {"start_s": 0.0, "avg_fps": 40.0, "low_1pct_fps": 40.0}
 
 
-def test_c10_windows_with_no_kept_rows_are_skipped(tmp_path):
-    # 0..30 s at 25 ms, nothing until 100 s, then 100..170 s at 50 ms.
-    # Windows 35 and 40 are empty; 45 is the earliest all-slow window.
+def test_c25_windows_start_at_kept_rows_so_none_is_empty(tmp_path):
+    # 0..30 s at 25 ms, nothing until 100 s, then 100..170 s at 50 ms. Item 25: windows
+    # start at kept rows, so none is empty; the earliest all-slow window starts at the
+    # first slow row, 100.0 s (was 45.0 on the 5 s grid, whose 35 and 40 were empty).
     lines = [row(25.0, k * 25 * MS) for k in range(1201)]
     lines += [row(50.0, 100 * S + j * 50 * MS) for j in range(1401)]
     r = report(tmp_path, lines)
-    assert r["worst_window"] == {"start_s": 45.0, "avg_fps": 20.0, "low_1pct_fps": 20.0}
+    assert r["worst_window"] == {"start_s": 100.0, "avg_fps": 20.0, "low_1pct_fps": 20.0}
     assert r["stalls"] == [{"at_s": 30.0, "duration_s": 70.0}]
 
 
@@ -574,18 +579,16 @@ def test_c20_jump_of_exactly_24_h_is_a_kept_stall(tmp_path):
     assert r["stalls"] == [{"at_s": 10.0, "duration_s": 86400.0}]
 
 
-def test_c20_worst_window_after_long_gap_starts_at_first_window_that_can_hold_a_row(
-    tmp_path,
-):
+def test_c20_worst_window_after_long_gap_starts_at_first_slow_row(tmp_path):
     # 0 .. 100 s at 25 ms (40 fps); nothing for 2 h; 7300 .. 7400 s at 50 ms (20 fps).
-    # The earliest window holding a slow row and no fast one is [7245, 7305): 100 rows
-    # at 50 ms -> 20.0. A skip that started at the first row (7300) would be wrong.
+    # Item 25: the earliest all-slow window starts at the first slow row, 7300.0 s
+    # (was 7245.0 on the 5 s grid: [7245, 7305) held 100 slow rows and nothing else).
     lines = steady(4001, start_ns=0)
     lines += [row(50.0, 7300 * S + j * 50 * MS) for j in range(2001)]
     r = report(tmp_path, lines)
     assert r["duration_s"] == 7400.0
     assert r["stalls"] == [{"at_s": 100.0, "duration_s": 7200.0}]
-    assert r["worst_window"] == {"start_s": 7245.0, "avg_fps": 20.0, "low_1pct_fps": 20.0}
+    assert r["worst_window"] == {"start_s": 7300.0, "avg_fps": 20.0, "low_1pct_fps": 20.0}
 
 
 def test_c20_100k_rows_with_23_hour_gap_analysed_under_5_s(tmp_path):
@@ -603,3 +606,41 @@ def test_c20_100k_rows_with_23_hour_gap_analysed_under_5_s(tmp_path):
     assert r["stalls"] == [{"at_s": 1250.0, "duration_s": 82800.0}]
     assert r["worst_window"] == {"start_s": 0.0, "avg_fps": 40.0, "low_1pct_fps": 40.0}
     assert r["verdict"] == "gold"
+
+
+# ---- item 25: the worst minute is a true sliding window -----------------------------
+
+
+def test_c25_slow_minute_between_grid_steps_is_found_exactly(tmp_path):
+    # Fast 25 ms rows to 37.475 s, exactly 60 s of 50 ms rows at 37.5 .. 97.45 s, fast
+    # rows from 97.5 to 160 s. The window starting at the first slow row, [37.5, 97.5),
+    # holds the 1200 slow rows only -> exactly 20.0. The 5 s grid's best ([35, 95) or
+    # [40, 100): 100 fast + 1150 slow rows) would only reach 1250000/60000 = 20.8.
+    lines = [row(25.0, k * 25 * MS) for k in range(1500)]
+    lines += [row(50.0, 37_500 * MS + j * 50 * MS) for j in range(1200)]
+    lines += [row(25.0, 97_500 * MS + k * 25 * MS) for k in range(2501)]
+    r = report(tmp_path, lines)
+    assert r["worst_window"] == {"start_s": 37.5, "avg_fps": 20.0, "low_1pct_fps": 20.0}
+
+
+def test_c25_window_must_end_at_or_before_last_kept_elapsed(tmp_path):
+    # 0 .. 120 s at 25 ms, then 600 rows at 100 ms (120.1 .. 180.0 s, last kept 180.0).
+    # The latest allowed start is 120.0 s: [120.0, 180.0) = 1 fast + 599 slow rows,
+    # 600000 / 59925 = 10.01 -> 10.0. Starting at 120.1 s (all slow, exactly 10.0) would
+    # need an end of 180.1 > 180.0, so it is not a candidate.
+    lines = [row(25.0, k * 25 * MS) for k in range(4801)]
+    lines += [row(100.0, 120 * S + j * 100 * MS) for j in range(1, 601)]
+    r = report(tmp_path, lines)
+    assert r["worst_window"] == {"start_s": 120.0, "avg_fps": 10.0, "low_1pct_fps": 10.0}
+
+
+def test_c25_ties_go_to_earliest_start(tmp_path):
+    # Two identical slow minutes (50 ms) at 20 .. 80 s and 200 .. 260 s in 25 ms play.
+    # Both all-slow windows average exactly 20.0; the earlier one (20.0 s) wins.
+    lines = [row(25.0, k * 25 * MS) for k in range(800)]  # 0 .. 19.975 s
+    lines += [row(50.0, 20 * S + j * 50 * MS) for j in range(1200)]  # 20 .. 79.95 s
+    lines += [row(25.0, 80 * S + k * 25 * MS) for k in range(4800)]  # 80 .. 199.975 s
+    lines += [row(50.0, 200 * S + j * 50 * MS) for j in range(1200)]  # 200 .. 259.95 s
+    lines += [row(25.0, 260 * S + k * 25 * MS) for k in range(2401)]  # 260 .. 320 s
+    r = report(tmp_path, lines)
+    assert r["worst_window"] == {"start_s": 20.0, "avg_fps": 20.0, "low_1pct_fps": 20.0}

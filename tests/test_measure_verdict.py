@@ -747,3 +747,40 @@ def test_c24_first_row_spike_does_not_turn_fail_into_pass(tmp_path):
         "1% low 20.0 fps is below 28",
         "worst minute averaged 21.7 fps, below 30",
     ]
+
+
+# ---- item 25: a shifted first timestamp must not hide the worst minute --------------
+
+
+def verifier_round6(first_row_lowered_ns=0):
+    """Cumulative timestamps from 10 s, gpu_load 89: 12000 rows at 25 ms (300 s), 1791 at
+    33.5 ms (60 s), 12000 at 25 ms (300 s). Optionally only the first row's elapsed is
+    lowered (it stays below the next row, so it is kept)."""
+    lines = cumulative([25.0] * 12000 + [33.5] * 1791 + [25.0] * 12000, start_ns=10 * S)
+    lines[0] = row(25.0, 10 * S - first_row_lowered_ns)
+    return lines
+
+
+@pytest.mark.parametrize("lowered_ms", [0, 900, 2500, 4000])
+def test_c25_slow_minute_fails_wherever_the_first_row_sits(tmp_path, lowered_ms):
+    # N 25791, sum 24000*25 + 1791*33.5 = 659998.5 ms -> avg 39.1. P99 index 25533 lands
+    # on a 33.5 ms frame -> 29.85 (>= 28, < 33). Worst minute = the 1791 slow rows plus
+    # one 25 ms neighbour: 1792000 / 60023.5 = 29.855 -> 29.9 < 30 -> fail. The window
+    # does not depend on the first row: lowering it by 0.9 s shifted the 5 s grid off
+    # the slow minute (30.0, a wrong good_enough).
+    r = report(tmp_path, verifier_round6(lowered_ms * MS))
+    assert r["bad_rows"] == 0
+    assert r["frames"] == 25791
+    assert r["avg_fps"] == 39.1
+    assert r["low_1pct_fps"] == 29.9
+    assert r["worst_window"]["avg_fps"] == 29.9
+    assert r["worst_window"]["low_1pct_fps"] == 29.9
+    assert r["verdict"] == "fail"
+    assert r["reasons"] == ["worst minute averaged 29.9 fps, below 30"]
+
+
+def test_c25_verifier_clean_log_worst_minute_start(tmp_path):
+    # Clean log: the tied windows start at the last fast row (299.975 s from the first
+    # row) and the first slow row (300.0085 s); both round to 300.0.
+    r = report(tmp_path, verifier_round6())
+    assert r["worst_window"]["start_s"] == 300.0

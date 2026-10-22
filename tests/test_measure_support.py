@@ -102,10 +102,11 @@ def front_loaded(frametimes, gpu_load=89) -> list[str]:
     with no stalls, so playing time = duration_s >= 120 s (item 21).
 
     Frames at or below the mean frame time ("front") are spread evenly over [0, 120) s,
-    under 1 s apart; every window [s, s + 60) for s = 0 .. 60 holds only front frames,
-    so its average is at least the overall average. Frames slower than the mean
-    ("tail") sit 1 ms apart from rel 120.0 s, after the last window ends. If every frame
-    equals the mean, one is moved to the tail so the log reaches 120 s.
+    under 1 s apart. Frames slower than the mean ("tail") all share elapsed = rel 120.0 s,
+    which is then the last kept elapsed: every window must end at or before it (item 25),
+    so no window holds a tail frame and every window average is at least the overall
+    average. If every frame equals the mean, one is moved to the tail so the log reaches
+    120 s.
     """
     mean = sum(frametimes) / len(frametimes)
     front = sorted(ft for ft in frametimes if ft <= mean)
@@ -115,7 +116,7 @@ def front_loaded(frametimes, gpu_load=89) -> list[str]:
     assert len(front) > 120, "front frames must be under 1 s apart over 120 s"
     step = 120 * S // len(front)
     lines = [row(ft, START_NS + i * step, gpu_load) for i, ft in enumerate(front)]
-    lines += [row(ft, START_NS + 120 * S + i * MS, gpu_load) for i, ft in enumerate(tail)]
+    lines += [row(ft, START_NS + 120 * S, gpu_load) for ft in tail]
     return lines
 
 
