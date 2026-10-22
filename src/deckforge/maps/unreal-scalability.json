@@ -1,0 +1,185 @@
+{
+  "id": "unreal-scalability",
+  "engine": "unreal",
+  "label": "Unreal Engine scalability groups",
+  "match": {
+    "file_name": "GameUserSettings.ini",
+    "sections": [
+      "ScalabilityGroups"
+    ],
+    "keys": []
+  },
+  "knobs": [
+    {
+      "id": "resolution",
+      "label": "Resolution quality (%)",
+      "section": "ScalabilityGroups",
+      "key": "sg.ResolutionQuality",
+      "type": "percent",
+      "min": 10,
+      "max": 100,
+      "confidence": "likely",
+      "source": "seen in Fede's Sparking! Zero (100) and REMATCH (87) GameUserSettings.ini (2026-10-21); range 10-100 per spec S3 and answer 13"
+    },
+    {
+      "id": "view_distance",
+      "label": "View distance quality",
+      "section": "ScalabilityGroups",
+      "key": "sg.ViewDistanceQuality",
+      "type": "level",
+      "values": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "confidence": "likely",
+      "source": "seen in Fede's Sparking! Zero and REMATCH GameUserSettings.ini (2026-10-21) with the 0-3 range; level ladder 0-4 per https://dev.epicgames.com/documentation/en-us/unreal-engine/scalability-reference-for-unreal-engine"
+    },
+    {
+      "id": "anti_aliasing",
+      "label": "Anti-aliasing quality",
+      "section": "ScalabilityGroups",
+      "key": "sg.AntiAliasingQuality",
+      "type": "level",
+      "values": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "confidence": "likely",
+      "source": "seen in Fede's Sparking! Zero and REMATCH GameUserSettings.ini (2026-10-21) with the 0-3 range; level ladder 0-4 per https://dev.epicgames.com/documentation/en-us/unreal-engine/scalability-reference-for-unreal-engine"
+    },
+    {
+      "id": "shadows",
+      "label": "Shadow quality",
+      "section": "ScalabilityGroups",
+      "key": "sg.ShadowQuality",
+      "type": "level",
+      "values": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "confidence": "documented",
+      "source": "https://dev.epicgames.com/documentation/en-us/unreal-engine/scalability-reference-for-unreal-engine"
+    },
+    {
+      "id": "global_illumination",
+      "label": "Global illumination quality",
+      "section": "ScalabilityGroups",
+      "key": "sg.GlobalIlluminationQuality",
+      "type": "level",
+      "values": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "confidence": "likely",
+      "source": "seen in Fede's Sparking! Zero and REMATCH GameUserSettings.ini (2026-10-21) with the 0-3 range; level ladder 0-4 per https://dev.epicgames.com/documentation/en-us/unreal-engine/scalability-reference-for-unreal-engine"
+    },
+    {
+      "id": "reflections",
+      "label": "Reflection quality",
+      "section": "ScalabilityGroups",
+      "key": "sg.ReflectionQuality",
+      "type": "level",
+      "values": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "confidence": "likely",
+      "source": "seen in Fede's Sparking! Zero and REMATCH GameUserSettings.ini (2026-10-21) with the 0-3 range; level ladder 0-4 per https://dev.epicgames.com/documentation/en-us/unreal-engine/scalability-reference-for-unreal-engine"
+    },
+    {
+      "id": "post_process",
+      "label": "Post-process quality",
+      "section": "ScalabilityGroups",
+      "key": "sg.PostProcessQuality",
+      "type": "level",
+      "values": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "confidence": "documented",
+      "source": "https://dev.epicgames.com/documentation/en-us/unreal-engine/scalability-reference-for-unreal-engine"
+    },
+    {
+      "id": "textures",
+      "label": "Texture quality",
+      "section": "ScalabilityGroups",
+      "key": "sg.TextureQuality",
+      "type": "level",
+      "values": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "confidence": "documented",
+      "source": "https://dev.epicgames.com/documentation/en-us/unreal-engine/scalability-reference-for-unreal-engine"
+    },
+    {
+      "id": "effects",
+      "label": "Effects quality",
+      "section": "ScalabilityGroups",
+      "key": "sg.EffectsQuality",
+      "type": "level",
+      "values": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "confidence": "documented",
+      "source": "https://dev.epicgames.com/documentation/en-us/unreal-engine/scalability-reference-for-unreal-engine"
+    },
+    {
+      "id": "foliage",
+      "label": "Foliage quality",
+      "section": "ScalabilityGroups",
+      "key": "sg.FoliageQuality",
+      "type": "level",
+      "values": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "confidence": "likely",
+      "source": "seen in Fede's Sparking! Zero and REMATCH GameUserSettings.ini (2026-10-21) with the 0-3 range; level ladder 0-4 per https://dev.epicgames.com/documentation/en-us/unreal-engine/scalability-reference-for-unreal-engine"
+    },
+    {
+      "id": "shading",
+      "label": "Shading quality",
+      "section": "ScalabilityGroups",
+      "key": "sg.ShadingQuality",
+      "type": "level",
+      "values": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "confidence": "likely",
+      "source": "seen in Fede's Sparking! Zero and REMATCH GameUserSettings.ini (2026-10-21) with the 0-3 range; level ladder 0-4 per https://dev.epicgames.com/documentation/en-us/unreal-engine/scalability-reference-for-unreal-engine"
+    }
+  ]
+}
