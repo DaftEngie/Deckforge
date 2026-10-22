@@ -333,3 +333,13 @@ Reviewed 2026-10-22 by the clarifier. These answers are binding and win over S1â
     - An `--appid` that names a non-game card is an exit-2 error that says it is a tool,
       not a game.
     - `read_settings` itself still accepts any card.
+20. **Decided after the verifier review, 2026-10-22.**
+    - **No traceback on huge numbers.** A `percent` value is `known` only if it matches
+      `-?[0-9]{1,9}` (no more than 9 digits) and lies within `min`â€“`max`. Longer digit
+      strings are simply unknown. One damaged file must never abort the report for
+      other games.
+    - **Map sources must be accurate.** In the Wilds map, the `SpeedTreeWind_*` source
+      line numbers are corrected to the real file: Branch 91, Global 92, Leaf 93.
+    - **Known limit, accepted:** a `number` value uses Python's `float()`, so exotic
+      digits (for example Arabic-Indic, or underscores) count as known. Revisit before
+      `tune` writes numbers.
