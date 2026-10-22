@@ -34,18 +34,28 @@ sudo systemctl enable --now sshd
 This lets your Mac send benchmark jobs later. Undo anytime with
 `sudo systemctl disable --now sshd`.
 
-## Step 5 — First Monster Hunter Wilds baseline (about 20 min)
-We use Capcom's free **Monster Hunter Wilds Benchmark** app (search it in the Steam
-store) because it's repeatable.
-1. Back in Game Mode, open the benchmark app → ⚙ → Properties → **Launch Options**, paste
-   the line the setup script printed (`MANGOHUD_CONFIGFILE=... mangohud %command%`).
-2. In the Quick Access menu → Performance: per-game profile ON, frame limit OFF,
-   TDP default. Write down what you set.
-3. Use the graphics settings you normally play with. Take a photo of the settings screen.
-4. Run the benchmark **3 times**. The first run warms up shaders; we keep all three and
-   discard the first in analysis.
-5. Logs appear in `~/deckforge/logs/`. Claude will tell you how to send them (USB stick,
-   or over SSH once it's on).
+## Step 5 — Log your normal play (Game Mode only)
+**Always play and measure in Game Mode.** In Desktop Mode, heavy games such as
+Monster Hunter Wilds can freeze on a black screen and rewrite their own settings for the
+desktop screen. This happened on 2026-10-21.
+
+1. Re-run `bash ~/deckforge-repo/deck/setup_deck.sh`. It writes
+   `~/deckforge/mangohud-session.conf` and prints the launch option to use.
+2. In Game Mode, go to the game → ⚙ → Properties → **Launch Options** and paste:
+   `MANGOHUD_CONFIGFILE=/home/deck/deckforge/mangohud-session.conf mangohud %command%`
+3. Play normally. Logging starts 60 seconds after launch, which skips the title screens,
+   and runs until you quit. A small stats overlay is visible while it logs.
+4. **Quit the game normally** before reading the log. A log from a game that is still
+   running is incomplete.
+5. In Desktop Mode → Konsole, run:
+   `cd ~/deckforge-repo && PYTHONPATH=src python3 -m deckforge.measure`
+   With in-game frame generation on, add `--fg-multiplier 2`.
+6. To stop logging, delete the launch option text.
+
+Logs are about 140 KB per minute. A 2-hour session is about 17 MB.
+
+Optional: Capcom's free **Monster Hunter Wilds Benchmark** plays a fixed scene, which
+is useful for repeatable comparisons. Use the same launch option on it.
 
 ## Step 6 — GPU profile (E1) — we do this together
 Capturing a Radeon GPU Profiler trace uses Mesa driver settings that we'll confirm

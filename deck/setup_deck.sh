@@ -47,22 +47,28 @@ if command -v mangohud >/dev/null 2>&1; then
 else
   todo "MangoHud not found on PATH. Tell Claude; we'll install it as a Flatpak/user package."
 fi
-conf="$DF/mangohud-bench.conf"
+# Session logging: records the whole play session, starting 60 s after launch to skip
+# the title screens, until you quit (log_duration=0 means no limit; MangoHud
+# src/logging.cpp:328). The overlay stays visible: with no_display, autostart never
+# fires (MangoHud src/overlay.cpp:313-317 skips the update that starts the log).
+# Older setups wrote mangohud-bench.conf (60-second logs). It is left untouched, and the
+# new config gets its own file name, so nothing is overwritten.
+conf="$DF/mangohud-session.conf"
 if [ -e "$conf" ]; then
-  ok "benchmark MangoHud config already exists (left unchanged): $conf"
+  ok "session MangoHud config already exists (left unchanged): $conf"
 else
   cat > "$conf" <<EOF
-# DeckForge benchmark logging config. Used only when a game's launch options point here.
+# DeckForge session logging config. Used only when a game's launch options point here.
 fps
 frametime
 gpu_stats
 cpu_stats
 output_folder=$DF/logs
 log_interval=0
-autostart_log=10
-log_duration=60
+autostart_log=60
+log_duration=0
 EOF
-  ok "benchmark MangoHud config written: $conf"
+  ok "session MangoHud config written: $conf"
 fi
 
 # 4. Python environment for the bench runner (in your home folder, survives updates)
@@ -87,7 +93,10 @@ say "  [info] Deck address on your Wi-Fi: ${ip_addr:-unknown}  (from the Mac: ss
 
 # 6. What to paste into a game's Launch Options for a baseline run
 say ""
-say "== Launch options for a logged benchmark run =="
+say "== Launch options for logged play (paste in Game Mode: game > Properties > Launch Options) =="
 say "MANGOHUD_CONFIGFILE=$conf mangohud %command%"
+say ""
+say "Play in GAME MODE only. In Desktop Mode, heavy games can freeze and may rewrite"
+say "their own settings for the desktop screen. To stop logging, delete that text."
 say ""
 say "Done. Nothing outside $DF was changed."
