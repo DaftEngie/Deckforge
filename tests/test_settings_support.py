@@ -280,13 +280,14 @@ def make_card(
     engine: str = "unknown",
     anticheat=(),
     installed: bool = True,
+    kind: str = "game",
 ) -> dict:
     """A card with every discover field (B4, C2-C7). `files` holds settings_files entries
     (see `entry`); they are sorted by path as C6 does."""
     return {
         "appid": appid,
         "name": name,
-        "kind": "game",
+        "kind": kind,
         "library": "/fake/library",
         "installdir": "Game",
         "buildid": "1",
@@ -415,6 +416,8 @@ UNITY_GAME = 1061090  # boot.config + user.reg
 PLAIN = 70  # unknown engine, no settings files
 BIG = 2050650  # RE Engine, config.ini of 1 MiB + 1 byte
 PENDING = 883710  # RE Engine, StateFlags 1026: installed false
+PROTON = 2805730  # kind "tool" (name matches ^Proton( |$)), installed (item 19)
+RUNTIME = 1628350  # kind "tool" (Steam Linux Runtime), installed (item 19)
 
 NAMES = {
     WILDS: "Monster Hunter Wilds",
@@ -426,6 +429,8 @@ NAMES = {
     PLAIN: "Plain Game",
     BIG: "Big Config Game",
     PENDING: "Pending Update Game",
+    PROTON: "Proton 9.0",
+    RUNTIME: "Steam Linux Runtime 3.0 (sniper)",
 }
 TREE_STATUS = {
     PLAIN: "no_map",
@@ -455,7 +460,8 @@ def prefix(library: Path, appid: int) -> Path:
 
 
 def build_tree(base: Path) -> dict:
-    """A Steam root with the four real-data games and five synthetic ones. Returns
+    """A Steam root with the four real-data games, five synthetic ones and two installed
+    tools (Proton, Steam Linux Runtime; spec item 19). Returns
     {"root": Path, "files": {label: Path}}."""
     root = base / "steam"
     put(root / "steamapps" / "libraryfolders.vdf", libraryfolders([("0", str(root))]))
@@ -499,6 +505,9 @@ def build_tree(base: Path) -> dict:
     pending = add_game(root, PENDING, "PendingGame", flags="1026")
     put(pending / "re_chunk_000.pak", b"\0")
     files["pending"] = put(pending / "config.ini", WILDS_INI)
+
+    add_game(root, PROTON, "Proton 9.0")
+    add_game(root, RUNTIME, "SteamLinuxRuntime_sniper")
     return {"root": root, "files": files}
 
 

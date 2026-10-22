@@ -10,7 +10,8 @@
 #         specified, so ids are compared sorted.
 #
 # read_settings(card, maps) -> dict
-#   Pre:  card is a discover scan card (all B4/C2-C7 fields) with installed true.
+#   Pre:  card is a discover scan card (all B4/C2-C7 fields) with installed true, of any
+#         kind: spec item 19 keeps read_settings open to tool cards (only the CLI filters).
 #   Post: keys exactly appid, name, engine, anticheat, status, maps, unmapped_files, issues
 #         (answer 8). ASSUMED: answer 8's frozen "Game" key set, which includes status, is
 #         what read_settings returns (S8 describes the CLI JSON as the S5 report "plus
@@ -111,8 +112,8 @@ def report_for(maps, files, **card_fields) -> dict:
     return settings.read_settings(card, maps)
 
 
-def one_file(tmp_path, maps, data: bytes, name: str, **card_fields) -> tuple[dict, Path]:
-    path = write(tmp_path / "Game" / name, data)
+def one_file(tmp_path, maps, data: bytes, file_name: str, **card_fields) -> tuple[dict, Path]:
+    path = write(tmp_path / "Game" / file_name, data)
     return report_for(maps, [(path, "ini")], **card_fields), path
 
 
@@ -286,6 +287,15 @@ def test_a7_empty_value_is_present_and_not_known(tmp_path, maps):
     shadow = unreal_knob(report, "sg.ShadowQuality")
     assert (shadow["present"], shadow["value"], shadow["known"]) == (True, "", False)
     assert report["status"] == "mapped_with_unknown_values"
+
+
+@pytest.mark.parametrize("kind", ["tool", "game"])
+def test_i19_read_settings_accepts_any_card_kind(tmp_path, maps, kind):
+    report, path = one_file(tmp_path, maps, REMATCH_GUS, GUS, kind=kind, name="Proton 9.0")
+    assert set(report) == GAME_KEYS
+    assert report["name"] == "Proton 9.0"
+    assert [m["file"] for m in report["maps"]] == [str(path)]
+    assert report["status"] == "mapped"
 
 
 # ---------------------------------------------------------------------------- S10 real data

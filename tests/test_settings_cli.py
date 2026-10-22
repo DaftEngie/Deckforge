@@ -4,10 +4,12 @@
 # main(argv=None) -> int
 #   Pre:  argv is a list of str, or None to read sys.argv[1:]. --steam-root is required;
 #         --appid takes an int and may repeat; --json switches the output.
-#   Post: runs deckforge.discover.scan(steam_root) and reports every installed card, or only
-#         the listed appids. Cards with installed false are never reported. ASSUMED: the
-#         fixture has no tool cards (Proton), because the spec does not say whether
-#         "every installed game" includes kind "tool".
+#   Post: runs deckforge.discover.scan(steam_root) and reports every installed card of kind
+#         "game", or only the listed appids. Cards with installed false are never reported.
+#         Item 19: cards of any other kind (Proton, Steam Linux Runtime) are left out of
+#         text and JSON; an --appid naming one is an exit-2 error, one stderr line, saying
+#         it is a tool, not a game (checked as: the line contains "tool"; nothing on
+#         stdout).
 #   Post: --json: stdout is exactly json.dumps(reports, indent=2, sort_keys=True) + "\n",
 #         reports sorted by appid, each equal to read_settings(card, load_maps()) for its
 #         card (the S5 report with status, answer 8 key sets).
@@ -61,10 +63,12 @@ from test_settings_support import (
     NO_MAP_TEXT,
     PENDING,
     PLAIN,
+    PROTON,
     RE_APPOPTION,
     RE_GRAPHICS,
     REMATCH,
     REMATCH_VALUES,
+    RUNTIME,
     SPARKING,
     SPARKING_VALUES,
     SRC,
@@ -166,7 +170,11 @@ def test_s8_json_lists_installed_games_sorted_by_appid_with_status(tree, capsys)
 def test_s8_json_reports_equal_read_settings_of_each_card(tree, capsys):
     maps = settings.load_maps()
     cards = sorted(
-        (card for card in discover.scan(str(tree["root"]))["games"] if card["installed"]),
+        (
+            card
+            for card in discover.scan(str(tree["root"]))["games"]
+            if card["installed"] and card["kind"] == "game"
+        ),
         key=lambda card: card["appid"],
     )
     expected = [settings.read_settings(card, maps) for card in cards]
@@ -249,6 +257,41 @@ def test_s8_appid_not_installed_exits_2_naming_it(tree, capsys, appid, mode):
     assert out == ""
     assert len(err.splitlines()) == 1
     assert str(appid) in err
+
+
+# ---------------------------------------------------------------------------- item 19
+
+
+def test_i19_json_leaves_out_tool_cards(tree, capsys):
+    cards = {card["appid"]: card for card in discover.scan(str(tree["root"]))["games"]}
+    assert (cards[PROTON]["kind"], cards[PROTON]["installed"]) == ("tool", True)
+    assert (cards[RUNTIME]["kind"], cards[RUNTIME]["installed"]) == ("tool", True)
+    appids = [r["appid"] for r in json_reports(tree, capsys)]
+    assert PROTON not in appids
+    assert RUNTIME not in appids
+    assert appids == sorted(TREE_STATUS)
+
+
+def test_i19_text_leaves_out_tool_cards(tree, capsys):
+    code, out, err = run_main(["--steam-root", str(tree["root"])], capsys)
+    assert code == 0, err
+    assert NAMES[PROTON] not in out
+    assert NAMES[RUNTIME] not in out
+    assert set(text_blocks(out, TREE_STATUS)) == set(TREE_STATUS)
+
+
+@pytest.mark.parametrize("tool", [PROTON, RUNTIME], ids=["proton", "runtime"])
+@pytest.mark.parametrize("mode", [[], ["--json"]], ids=["text", "json"])
+@pytest.mark.parametrize("alone", [True, False], ids=["alone", "with-a-game"])
+def test_i19_appid_of_a_tool_exits_2_saying_it_is_a_tool(tree, capsys, tool, mode, alone):
+    argv = ["--steam-root", str(tree["root"]), "--appid", str(tool)]
+    if not alone:
+        argv += ["--appid", str(WILDS)]
+    code, out, err = run_main(argv + mode, capsys)
+    assert code == 2
+    assert out == ""
+    assert len(err.splitlines()) == 1
+    assert "tool" in err.lower()
 
 
 # ---------------------------------------------------------------------------- S8 text
