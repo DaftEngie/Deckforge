@@ -51,7 +51,7 @@ step 2's spec.
 |---|---|---|---|---|
 | Sky/Cloud Quality | Low | not found | | unknown |
 | Grass/Tree Quality | Low | not found | | unknown |
-| Grass/Tree Sway | Disable | `SpeedTreeWind_*` (around 90–92) | 0 | likely |
+| Grass/Tree Sway | Disable | `SpeedTreeWind_Branch` (91), `_Global` (92), `_Leaf` (93) | 0 | likely |
 | Foliage Density | Lowest | not found (perhaps `GlobalDensity` or `DensityCulling*`) | | unknown |
 | Foliage and Snow Collision | Off | `GrassPushCollision` (43) | False | likely |
 | Wind Simulation Quality | Off | `WindSimulationQuality` (115) | OFF | matched |
