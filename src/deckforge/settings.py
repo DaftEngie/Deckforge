@@ -35,7 +35,7 @@ _KNOB_FIELDS = ("id", "label", "section", "key", "type", "confidence", "source")
 _UTF16_BOMS = (b"\xff\xfe", b"\xfe\xff")
 _UTF8_BOM = b"\xef\xbb\xbf"
 _ARRAY_PREFIXES = ("+", "-", ".", "!")
-_PLAIN_INT = re.compile(r"-?[0-9]+")
+_PLAIN_INT = re.compile(r"-?[0-9]{1,9}")
 
 _log = logging.getLogger("deckforge.settings")  # not __name__, which is __main__ under -m
 

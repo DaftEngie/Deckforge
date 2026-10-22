@@ -145,7 +145,7 @@
         "0"
       ],
       "confidence": "likely",
-      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 90"
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 91"
     },
     {
       "id": "grass_sway_global",
@@ -157,7 +157,7 @@
         "0"
       ],
       "confidence": "likely",
-      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 91"
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 92"
     },
     {
       "id": "grass_sway_leaf",
@@ -169,7 +169,7 @@
         "0"
       ],
       "confidence": "likely",
-      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 92"
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 93"
     },
     {
       "id": "foliage_collision",
