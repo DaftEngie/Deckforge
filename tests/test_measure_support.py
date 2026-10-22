@@ -85,6 +85,28 @@ def grid(frametimes, step_ns=25 * MS, start_ns=START_NS, gpu_load=89) -> list[st
     ]
 
 
+LONG_STEP_NS = 500 * MS  # 300 rows -> 149.5 s: past SHORT_LOG_S, gaps under GAP_NS
+
+
+def spread(frametimes, gpu_load=89) -> list[str]:
+    """Same frame times, rows 500 ms apart so the log is >= 120 s for N >= 242.
+
+    Elapsed spacing only feeds duration_s and stall detection; every fps metric and the
+    verdict thresholds read frametime, so the tested numbers stay identical.
+    """
+    return grid(frametimes, LONG_STEP_NS, START_NS, gpu_load)
+
+
+def cumulative(frametimes, start_ns=START_NS, gpu_load=89) -> list[str]:
+    """Realistic rows: each row's elapsed advances by its own frame time (whole ns)."""
+    lines, elapsed = [], start_ns
+    for i, ft in enumerate(frametimes):
+        if i:
+            elapsed += round(ft * MS)
+        lines.append(row(ft, elapsed, gpu_load))
+    return lines
+
+
 def steady(n, frametime_ms=25.0, start_ns=START_NS, gpu_load=89) -> list[str]:
     """n frames of frametime_ms each, elapsed advancing by exactly that frame time."""
     return grid([frametime_ms] * n, round(frametime_ms * MS), start_ns, gpu_load)

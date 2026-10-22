@@ -42,6 +42,7 @@ from test_measure_support import (
     run_python,
     snapshot,
     sorted_markers,
+    spread,
     steady,
     write_log,
 )
@@ -145,8 +146,8 @@ def test_m10_json_file_is_base_name_and_fg_multiplier_is_reported(tmp_path, caps
 
 def test_m10_wilds_shaped_log_full_report(tmp_path, capsys):
     # Spec end-to-end check: 7,428 rows over 299.9 s at 24.8 fps, gpu limited, fail.
-    # Every frame 40.375 ms (exact in binary): avg = low = 24.7678 -> 24.8 shown,
-    # 24.7 in reasons (floor). Two 2.2e7 artifacts near 6.1 s and 52.5 s whose
+    # Every frame 40.375 ms (exact in binary): avg = low = 24.7678 -> 24.8, in the
+    # report and (C18) in the reasons too. Two 2.2e7 artifacts near 6.1 s and 52.5 s whose
     # frametimes differ by exactly the elapsed gap, as in Fede's log.
     step = 40_375_000
     lines = [row(40.375, START_NS + k * step, gpu_load=99) for k in range(7428)]
@@ -174,7 +175,7 @@ def test_m10_wilds_shaped_log_full_report(tmp_path, capsys):
         "real_avg_fps": 24.8,
         "real_is_estimate": False,
         "real_low_1pct_fps": 24.8,
-        "reasons": ["average 24.7 fps is below 30", "1% low 24.7 fps is below 28"],
+        "reasons": ["average 24.8 fps is below 30", "1% low 24.8 fps is below 28"],
         "slower_than": {"35": 1.0, "30": 1.0, "28": 1.0},
         "stalls": [],
         "system": SYSTEM,
@@ -187,6 +188,7 @@ def test_m10_wilds_shaped_log_full_report(tmp_path, capsys):
 def test_c2_empty_log_json_nulls_and_exit_0(tmp_path, capsys):
     path = write_log(tmp_path, [])
     r = json_report(capsys, [str(path)])
+    assert r["reasons"] == ["fewer than 300 frames"]
     assert r["frames"] == 0
     assert r["avg_fps"] is None
     assert r["worst_window"] is None
@@ -214,7 +216,7 @@ def test_m10_text_report_shows_file_and_every_fps_value(tmp_path, capsys):
 
 
 def test_m10_text_report_lists_reasons(tmp_path, capsys):
-    path = write_log(tmp_path, steady(300, 50.0))
+    path = write_log(tmp_path, spread([50.0] * 300))  # 149.5 s, so the verdict is fail
     out = text_report(capsys, ["--fg-multiplier", "2", str(path)])
     assert "average 20.0 fps is below 30" in out
     assert "1% low 20.0 fps is below 28" in out
@@ -257,8 +259,11 @@ def test_m6_text_limit_sentence(tmp_path, capsys, loads, sentence):
 @pytest.mark.parametrize("as_json", [False, True])
 def test_m10_exit_0_for_fail_and_not_enough_data(tmp_path, capsys, as_json):
     flag = ["--json"] if as_json else []
-    failing = write_log(tmp_path / "a", steady(300, 50.0))
+    failing = write_log(tmp_path / "a", spread([50.0] * 300))  # 149.5 s at 20 fps: fail
     tiny = write_log(tmp_path / "b", steady(5))
+    # the fixtures provably cover both verdicts
+    assert measure.analyze(measure.parse_log(str(failing)))["verdict"] == "fail"
+    assert measure.analyze(measure.parse_log(str(tiny)))["verdict"] == "not_enough_data"
     assert run_cli(measure, [*flag, str(failing)], capsys)[0] == 0
     assert run_cli(measure, [*flag, str(tiny)], capsys)[0] == 0
 

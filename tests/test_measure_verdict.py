@@ -8,19 +8,37 @@ analyze(log, *, fg_multiplier=1)["warnings"]                                    
     likely_loading_or_menus (gpu_load column present and kept mean < 50),
     few_frames (N < 300), bad_rows (bad_rows > 0), artifact_rows (>= 1 artifact).
 
-analyze(...)["verdict"], ["reasons"]                                       [M9, C1, C11]
+analyze(...)["verdict"], ["reasons"]                                  [M9, C1, C11, C18]
   Postconditions, on UNROUNDED avg_fps, low_1pct_fps, real_low_1pct_fps:
-    not_enough_data  if N < 300 (includes N = 0)
+    not_enough_data  if short_log, likely_loading_or_menus or few_frames applies, or N = 0
     gold             if avg >= 34.5 and low >= 33.0 and real_low >= 14.0
     good_enough      if avg >= 30.0 and low >= 28.0 and real_low >= 14.0
     fail             otherwise
-  reasons: [] unless fail; for fail, each failed good_enough test, in this order:
-    "average {a} fps is below {t}", "1% low {b} fps is below {t}",
-    "real-frame 1% low {c} fps is below {t}"
-  with a/b/c = math.floor(x * 10) / 10 formatted ".1f" and t formatted "g".
+  reasons: [] for gold and good_enough.
+    not_enough_data: one line per cause, in this order (C18):
+      "log is shorter than 120 s", "the graphics chip was mostly idle, likely loading
+      or menus", "fewer than 300 frames"; for N = 0 exactly ["fewer than 300 frames"].
+    fail: each failed good_enough test, in this order:
+      "average {a} fps is below {t}", "1% low {b} fps is below {t}",
+      "real-frame 1% low {c} fps is below {t}"
+    with a/b/c = round(x, 1) formatted ".1f", unless that reaches the threshold, then
+    math.floor(x * 10) / 10 (C18 replaces C11's always-floor); t formatted "g".
+  Verdict fixtures use spread() (rows 500 ms apart) so they are >= 120 s and not
+  forced to not_enough_data by short_log.
 """
 
-from test_measure_support import COLUMNS, MS, START_NS, grid, interleave, row, steady, write_log
+from test_measure_support import (
+    COLUMNS,
+    MS,
+    START_NS,
+    cumulative,
+    grid,
+    interleave,
+    row,
+    spread,
+    steady,
+    write_log,
+)
 
 from deckforge import measure
 
@@ -33,9 +51,14 @@ def report(tmp_path, lines, fg=1, **kw):
 
 
 def mix(*groups):
-    """mix((count, frametime), ...) -> interleaved frame times on a 25 ms elapsed grid."""
+    """mix((count, frametime), ...) -> interleaved frame times, rows 500 ms apart (>= 120 s)."""
     frametimes = [ft for count, ft in groups for _ in range(count)]
-    return grid(interleave(frametimes))
+    return spread(interleave(frametimes))
+
+
+SHORT = "log is shorter than 120 s"
+IDLE = "the graphics chip was mostly idle, likely loading or menus"
+FEW = "fewer than 300 frames"
 
 
 # ---- M8: warnings ------------------------------------------------------------------
@@ -157,9 +180,9 @@ def test_m9_good_enough_at_exact_low_threshold(tmp_path):
 
 
 def test_m9_fail_on_low(tmp_path):
-    r = report(tmp_path, mix((296, 25.0), (4, 36.0)))  # 1000/36 = 27.78
+    r = report(tmp_path, mix((296, 25.0), (4, 36.0)))  # 1000/36 = 27.78 -> round 27.8
     assert r["verdict"] == "fail"
-    assert r["reasons"] == ["1% low 27.7 fps is below 28"]
+    assert r["reasons"] == ["1% low 27.8 fps is below 28"]
 
 
 def test_m9_real_floor_exactly_14_passes(tmp_path):
@@ -176,16 +199,16 @@ def test_m9_real_floor_fail(tmp_path):
 
 
 def test_m9_exactly_min_frames_gets_a_verdict(tmp_path):
-    r = report(tmp_path, steady(300))
+    r = report(tmp_path, spread([25.0] * 300))
     assert r["frames"] == 300
     assert r["verdict"] == "gold"
     assert r["reasons"] == []
 
 
 def test_m9_few_frames_is_not_enough_data_even_when_bad(tmp_path):
-    r = report(tmp_path, steady(299, 50.0))
+    r = report(tmp_path, spread([50.0] * 299))  # 149 s, so few_frames is the only cause
     assert r["verdict"] == "not_enough_data"
-    assert r["reasons"] == []
+    assert r["reasons"] == [FEW]
 
 
 # ---- C1: gold needs the real-frame floor --------------------------------------------
@@ -208,14 +231,14 @@ def test_c1_gold_with_fg2_keeps_gold_when_real_floor_met(tmp_path):
 
 
 def test_c11_reason_uses_floor_rounding_29_96_to_29_9(tmp_path):
-    r = report(tmp_path, grid([1000 / 29.96] * 300))
+    r = report(tmp_path, spread([1000 / 29.96] * 300))
     assert r["avg_fps"] == 30.0
     assert r["verdict"] == "fail"
     assert r["reasons"] == ["average 29.9 fps is below 30"]
 
 
 def test_c11_all_three_reasons_in_order(tmp_path):
-    r = report(tmp_path, steady(300, 50.0), fg=2)
+    r = report(tmp_path, spread([50.0] * 300), fg=2)
     assert r["verdict"] == "fail"
     assert r["reasons"] == [
         "average 20.0 fps is below 30",
@@ -225,6 +248,101 @@ def test_c11_all_three_reasons_in_order(tmp_path):
 
 
 def test_c11_good_enough_has_no_reasons(tmp_path):
-    r = report(tmp_path, steady(300, 32.0))  # 31.25 fps
+    r = report(tmp_path, spread([32.0] * 300))  # 31.25 fps
     assert r["verdict"] == "good_enough"
     assert r["reasons"] == []
+
+
+# ---- C18: unrepresentative logs never pass; reasons match report rounding ----------
+
+
+def test_c18_three_second_high_fps_log_is_not_enough_data(tmp_path):
+    r = report(tmp_path, steady(376, 8.0))  # 375 x 8 ms = 3.0 s at 125 fps
+    assert r["duration_s"] == 3.0
+    assert r["frames"] == 376
+    assert r["verdict"] == "not_enough_data"
+    assert r["reasons"] == [SHORT]
+
+
+def test_c18_sixty_second_low_gpu_log_gives_both_reasons_in_order(tmp_path):
+    r = report(tmp_path, steady(1876, 32.0, gpu_load=30))  # 1875 x 32 ms = 60.0 s
+    assert r["duration_s"] == 60.0
+    assert r["avg_fps"] == 31.2  # 31.25 would be good_enough on a real session
+    assert r["verdict"] == "not_enough_data"
+    assert r["reasons"] == [SHORT, IDLE]
+
+
+def test_c18_long_low_gpu_log_is_not_enough_data(tmp_path):
+    r = report(tmp_path, spread([25.0] * 300, gpu_load=30))  # 149.5 s, 40 fps
+    assert r["verdict"] == "not_enough_data"
+    assert r["reasons"] == [IDLE]
+
+
+def test_c18_all_three_causes_in_order(tmp_path):
+    r = report(tmp_path, steady(10, gpu_load=10))
+    assert r["verdict"] == "not_enough_data"
+    assert r["reasons"] == [SHORT, IDLE, FEW]
+
+
+def test_c18_short_failing_log_lists_causes_not_fail_reasons(tmp_path):
+    r = report(tmp_path, steady(300, 50.0), fg=2)  # 14.95 s at 20 fps
+    assert r["verdict"] == "not_enough_data"
+    assert r["reasons"] == [SHORT]
+
+
+def test_c18_no_frames_reason_is_only_fewer_than_300(tmp_path):
+    r = report(tmp_path, [])
+    assert r["verdict"] == "not_enough_data"
+    assert r["reasons"] == [FEW]
+
+
+def test_c18_short_log_boundary_120_s(tmp_path):
+    at_120 = report(tmp_path / "a", steady(4801))  # 120.0 s
+    below = report(tmp_path / "b", steady(4800))  # 119.975 s
+    assert at_120["verdict"] == "gold"
+    assert below["verdict"] == "not_enough_data"
+    assert below["reasons"] == [SHORT]
+
+
+def test_c18_gpu_mean_boundary_50(tmp_path):
+    at_50 = report(tmp_path / "a", spread([25.0] * 300, gpu_load=50))
+    below = report(tmp_path / "b", spread([25.0] * 300, gpu_load=49.9))
+    assert at_50["verdict"] == "gold"
+    assert below["verdict"] == "not_enough_data"
+    assert below["reasons"] == [IDLE]
+
+
+def test_c18_reason_number_rounds_like_report_24_75_to_24_8(tmp_path):
+    # 3168 frames, 1888 x 40 ms + 1280 x 41 ms = 128000 ms (128 s of real time):
+    # avg = 3168000 / 128000 = 24.75 exactly -> round 24.8 (floor would say 24.7).
+    # P99 = 41 ms -> 24.39 -> 24.4.
+    r = report(tmp_path, cumulative(interleave([40.0] * 1888 + [41.0] * 1280)))
+    assert r["avg_fps"] == 24.8
+    assert r["verdict"] == "fail"
+    assert r["reasons"] == ["average 24.8 fps is below 30", "1% low 24.4 fps is below 28"]
+
+
+def test_c18_reason_floors_29_96_because_rounding_reaches_30(tmp_path):
+    r = report(tmp_path, spread([1000 / 29.96] * 300))
+    assert r["avg_fps"] == 30.0
+    assert r["reasons"] == ["average 29.9 fps is below 30"]
+
+
+def test_c18_low_reason_floors_27_96_because_rounding_reaches_28(tmp_path):
+    r = report(tmp_path, mix((296, 25.0), (4, 1000 / 27.96)))
+    assert r["low_1pct_fps"] == 28.0
+    assert r["verdict"] == "fail"
+    assert r["reasons"] == ["1% low 27.9 fps is below 28"]
+
+
+def test_c18_real_reason_rounds_13_86_to_13_9(tmp_path):
+    r = report(tmp_path, spread([1000 / 41.58] * 300), fg=3)  # real 13.86
+    assert r["verdict"] == "fail"
+    assert r["reasons"] == ["real-frame 1% low 13.9 fps is below 14"]
+
+
+def test_c18_real_reason_floors_13_96_because_rounding_reaches_14(tmp_path):
+    r = report(tmp_path, spread([1000 / 41.88] * 300), fg=3)  # real 13.96
+    assert r["real_low_1pct_fps"] == 14.0
+    assert r["verdict"] == "fail"
+    assert r["reasons"] == ["real-frame 1% low 13.9 fps is below 14"]

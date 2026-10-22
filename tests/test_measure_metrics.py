@@ -29,7 +29,8 @@ analyze(log, *, fg_multiplier=1) -> dict
       earliest wins ties; whole session (start 0) if duration_s < 60.            [M7, C10]
     - N = 0: frames 0; fps fields, real_avg/low, duration_s, gpu_busy_share and
       worst_window None; slower_than {}; limit "unknown"; verdict not_enough_data;
-      real_is_estimate is still the bool fg_multiplier > 1.                     [C2, C17]
+      real_is_estimate is still the bool fg_multiplier > 1; reasons are exactly
+      ["fewer than 300 frames"].                                          [C2, C17, C18]
     - Rounding: fps, duration_s, stall times, start_s -> round(x, 1); shares -> round(x, 3).
   Invariants: analyze never mutates the log and never touches the disk.
 """
@@ -496,7 +497,7 @@ def assert_empty_report(r):
     assert r["slower_than"] == {}
     assert r["limit"] == "unknown"
     assert r["verdict"] == "not_enough_data"
-    assert r["reasons"] == []
+    assert r["reasons"] == ["fewer than 300 frames"]  # C18 replaces C2's []
     assert r["hitches"] == 0
 
 
