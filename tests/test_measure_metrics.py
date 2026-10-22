@@ -35,6 +35,8 @@ analyze(log, *, fg_multiplier=1) -> dict
   Invariants: analyze never mutates the log and never touches the disk.
 """
 
+import time
+
 import pytest
 from test_measure_support import (
     COLUMNS,
@@ -540,3 +542,64 @@ def test_c2_empty_log_with_frame_generation_does_not_divide(tmp_path):
     assert_empty_report(r)
     assert r["reasons"] == ["fewer than 300 frames"]
     assert r["fg_multiplier"] == 4
+
+
+# ---- item 20: absurd jumps and fast worst minute -----------------------------------
+
+DAY = 24 * 3600 * S
+
+
+def test_c20_jumped_row_dropped_and_session_continues(tmp_path):
+    # 0 .. 10 s, then a row 24 h + 1 ns after the last good row (bad), then 400 rows
+    # from 10.025 s compared with the 10 s row: kept. 401 + 400 frames over 20.0 s.
+    lines = steady(401)
+    lines.append(row(25.0, START_NS + 10 * S + DAY + 1))
+    lines += steady(400, start_ns=START_NS + 10 * S + 25 * MS)
+    r = report(tmp_path, lines)
+    assert r["bad_rows"] == 1
+    assert r["frames"] == 801
+    assert r["duration_s"] == 20.0
+    assert r["stalls"] == []
+
+
+def test_c20_jump_of_exactly_24_h_is_a_kept_stall(tmp_path):
+    # 0 .. 10 s; one row at 10 s + 24 h (kept); 400 rows to 86420 s.
+    lines = steady(401)
+    lines.append(row(25.0, START_NS + 10 * S + DAY))
+    lines += steady(400, start_ns=START_NS + 10 * S + DAY + 25 * MS)
+    r = report(tmp_path, lines)
+    assert r["bad_rows"] == 0
+    assert r["frames"] == 802
+    assert r["duration_s"] == 86420.0
+    assert r["stalls"] == [{"at_s": 10.0, "duration_s": 86400.0}]
+
+
+def test_c20_worst_window_after_long_gap_starts_at_first_window_that_can_hold_a_row(
+    tmp_path,
+):
+    # 0 .. 100 s at 25 ms (40 fps); nothing for 2 h; 7300 .. 7400 s at 50 ms (20 fps).
+    # The earliest window holding a slow row and no fast one is [7245, 7305): 100 rows
+    # at 50 ms -> 20.0. A skip that started at the first row (7300) would be wrong.
+    lines = steady(4001, start_ns=0)
+    lines += [row(50.0, 7300 * S + j * 50 * MS) for j in range(2001)]
+    r = report(tmp_path, lines)
+    assert r["duration_s"] == 7400.0
+    assert r["stalls"] == [{"at_s": 100.0, "duration_s": 7200.0}]
+    assert r["worst_window"] == {"start_s": 7245.0, "avg_fps": 20.0, "low_1pct_fps": 20.0}
+
+
+def test_c20_100k_rows_with_23_hour_gap_analysed_under_5_s(tmp_path):
+    # 50,000 rows at 25 ms (0 .. 1249.975 s), a 23 h + 25 ms gap, 50,000 rows more.
+    # duration 2 x 1249.975 + 82800.025 = 85299.975 -> 85300.0.
+    gap = 23 * 3600 * S + 25 * MS
+    lines = steady(50_000) + steady(50_000, start_ns=START_NS + 49_999 * 25 * MS + gap)
+    path = write_log(tmp_path, lines)
+    started = time.monotonic()
+    r = measure.analyze(measure.parse_log(str(path)))
+    elapsed_s = time.monotonic() - started
+    assert elapsed_s < 5.0, f"took {elapsed_s:.1f} s"
+    assert r["frames"] == 100_000
+    assert r["duration_s"] == 85300.0
+    assert r["stalls"] == [{"at_s": 1250.0, "duration_s": 82800.0}]
+    assert r["worst_window"] == {"start_s": 0.0, "avg_fps": 40.0, "low_1pct_fps": 40.0}
+    assert r["verdict"] == "gold"

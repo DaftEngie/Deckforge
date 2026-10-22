@@ -562,3 +562,27 @@ def test_f3_text_explains_no_gpu_data(tmp_path, capsys):
     path = write_log(tmp_path, lines, columns=cols)
     out = text_report(capsys, [str(path)])
     assert "can't tell menus from gameplay without GPU load" in out
+
+
+# ---- item 20: damaged values never crash or freeze the CLI --------------------------
+
+
+def test_c20_two_huge_gpu_values_exit_0_without_traceback(tmp_path):
+    lines = steady(8000, 22.2, gpu_load=95)
+    for i in (100, 101):
+        lines[i] = row(22.2, START_NS + i * 22_200_000, gpu_load="1e308")
+    result = run_module(["--json", str(write_log(tmp_path, lines))], timeout=30)
+    assert result.returncode == 0, result.stderr
+    assert "Traceback" not in result.stderr
+    r = json.loads(result.stdout)
+    assert r["bad_rows"] == 2
+    assert r["frames"] == 7998
+
+
+def test_c20_elapsed_1e19_finishes_fast_exit_0(tmp_path):
+    lines = steady(8000, 22.2, gpu_load=95) + [row(22.2, "1e19", gpu_load=95)]
+    result = run_module(["--json", str(write_log(tmp_path, lines))], timeout=15)
+    assert result.returncode == 0, result.stderr
+    r = json.loads(result.stdout)
+    assert r["bad_rows"] == 1
+    assert r["frames"] == 8000

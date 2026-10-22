@@ -29,6 +29,10 @@ parse_log(path) -> MangoLog
       \r inside a field) is a bad row; a rejected header line (1-3) raises MeasureError
       saying the header is unreadable; never a traceback.                       [F1]
     - frametime < MIN_FRAMETIME_MS (0.1) is a bad row.                          [F2]
+  Item 20:
+    - with a gpu_load column, gpu_load < 0 or > 100 is a bad row (0 and 100 kept).
+    - elapsed more than MAX_JUMP_NS (24 h) after the previous non-bad row is a bad row;
+      later rows are compared with that same previous non-bad row.
   Invariants: reads only; never writes (see test_measure_cli.py, M12).
 """
 
@@ -460,3 +464,61 @@ def test_f2_frametime_exactly_0_1_ms_is_kept(tmp_path):
     log = parse(tmp_path, [GOOD_BEFORE, row(0.1, START_NS + 25 * MS), GOOD_AFTER])
     assert log.bad_rows == 0
     assert [r["frametime"] for r in log.rows] == [25.0, 0.1, 25.0]
+
+
+# ---- item 20: out-of-range gpu_load, absurd elapsed jumps ---------------------------
+
+HOUR = 3600 * S
+DAY = 24 * HOUR
+
+
+@pytest.mark.parametrize("gpu", ["100.0001", "-0.0001", "1000000", "1e308", "-5"])
+def test_c20_gpu_load_out_of_range_is_bad_row(tmp_path, gpu):
+    log = parse(tmp_path, [GOOD_BEFORE, row(25.0, START_NS + 25 * MS, gpu_load=gpu), GOOD_AFTER])
+    assert log.bad_rows == 1
+    assert log.first_bad_line == 5
+    assert len(log.rows) == 2
+
+
+@pytest.mark.parametrize("gpu", ["0", "0.0", "100", "100.0"])
+def test_c20_gpu_load_boundaries_are_kept(tmp_path, gpu):
+    log = parse(tmp_path, [GOOD_BEFORE, row(25.0, START_NS + 25 * MS, gpu_load=gpu), GOOD_AFTER])
+    assert log.bad_rows == 0
+    assert log.rows[1]["gpu_load"] == float(gpu)
+
+
+def test_c20_range_rule_is_for_gpu_load_only(tmp_path):
+    log = parse(tmp_path, [GOOD_BEFORE, row(25.0, START_NS + 25 * MS, cpu_load="150")])
+    assert log.bad_rows == 0
+    assert log.rows[1]["cpu_load"] == 150.0
+
+
+def test_c20_max_jump_constant():
+    assert measure.MAX_JUMP_NS == 86_400_000_000_000
+
+
+def test_c20_elapsed_jump_of_exactly_24_h_is_kept(tmp_path):
+    log = parse(tmp_path, [row(25.0, START_NS), row(25.0, START_NS + DAY)])
+    assert log.bad_rows == 0
+    assert len(log.rows) == 2
+
+
+def test_c20_elapsed_jump_over_24_h_is_bad_and_later_rows_compare_to_last_good(tmp_path):
+    # line 4: 0 s; line 5: 24 h + 1 ns (bad: jump); line 6: 1 s (fine against line 4);
+    # line 7: 0.5 s (bad: below line 6's 1 s); line 8: 2 s.
+    elapsed = [START_NS, START_NS + DAY + 1, START_NS + S, START_NS + S // 2, START_NS + 2 * S]
+    log = parse(tmp_path, [row(25.0, e) for e in elapsed])
+    assert log.bad_rows == 2
+    assert log.first_bad_line == 5
+    assert [r["elapsed"] for r in log.rows] == [
+        float(START_NS),
+        float(START_NS + S),
+        float(START_NS + 2 * S),
+    ]
+
+
+def test_c20_elapsed_1e19_is_bad_row(tmp_path):
+    log = parse(tmp_path, steady(10) + [row(25.0, "1e19")])
+    assert log.bad_rows == 1
+    assert log.first_bad_line == 14
+    assert len(log.rows) == 10

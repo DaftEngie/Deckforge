@@ -523,3 +523,40 @@ def test_f3_not_gpu_limit_alone_does_not_block_a_pass(tmp_path):
     assert r["limit"] == "not_gpu"
     assert r["warnings"] == []
     assert r["verdict"] == "gold"
+
+
+# ---- item 20: a damaged gpu_load must not change the verdict ------------------------
+
+
+def menu_log():
+    """9000 rows at 16.6 ms (8999 x 16.6 ms = 149.4 s), GPU 30% busy: menus."""
+    return steady(9000, 16.6, gpu_load=30)
+
+
+def test_c20_menu_log_is_not_enough_data(tmp_path):
+    r = report(tmp_path, menu_log())
+    assert r["verdict"] == "not_enough_data"
+    assert r["reasons"] == [IDLE]
+
+
+def test_c20_one_garbage_gpu_value_keeps_menu_log_not_enough_data(tmp_path):
+    lines = menu_log()
+    lines[4000] = row(16.6, START_NS + 4000 * 16_600_000, gpu_load=1000000)
+    r = report(tmp_path, lines)
+    assert r["bad_rows"] == 1
+    assert r["frames"] == 8999
+    assert r["warnings"] == ["likely_loading_or_menus", "bad_rows"]
+    assert r["verdict"] == "not_enough_data"
+    assert r["reasons"] == [IDLE]
+
+
+def test_c20_out_of_range_gpu_counts_toward_bad_share(tmp_path):
+    # 380 good rows + 21 rows at gpu_load 150: 21 / 401 > 5% (F5 still applies)
+    lines = spread([25.0] * 380)
+    end = START_NS + 380 * 500 * MS
+    lines += [row(25.0, end + i * 25 * MS, gpu_load=150) for i in range(21)]
+    r = report(tmp_path, lines)
+    assert r["bad_rows"] == 21
+    assert "too_many_bad_rows" in r["warnings"]
+    assert r["verdict"] == "not_enough_data"
+    assert r["reasons"] == [BAD_SHARE]
