@@ -1,6 +1,6 @@
 """Read one MangoHud frame-time log and report how the session played.
 
-Spec: docs/specs/measure.md (M1-M12 plus clarifier items 1-24, which win where they
+Spec: docs/specs/measure.md (M1-M12 plus clarifier items 1-25, which win where they
 differ). The target comes from decision 0002. This module only reads: it never creates,
 changes or deletes a file (M12), and it adds no logging handlers (C15).
 
@@ -12,6 +12,7 @@ import csv
 import dataclasses
 import json
 import logging
+import itertools
 import math
 import os
 import stat
@@ -385,13 +386,14 @@ def _gpu_mean(kept: list[dict[str, float]], columns: list[str]) -> float | None:
 
 
 def _worst_window(kept: list[dict[str, float]]) -> tuple[dict[str, float], bool, float]:
-    """M7, C10: return (worst window, short_window flag, its unrounded avg fps).
+    """M7, C10, item 25: return (worst window, short_window flag, its unrounded avg fps).
 
-    Windows of WINDOW_S start every WINDOW_STEP_S from the first kept row while
-    start + WINDOW_S <= duration and cover [start, start + WINDOW_S). Empty windows are
-    skipped; the lowest unrounded avg wins, ties to the earliest. A session shorter than
-    WINDOW_S is one window starting at 0. Item 20: an empty window jumps straight to the
-    first aligned start whose window can hold the next row (same result, no stepping).
+    A window may start at the elapsed of every kept row while start + WINDOW_S <= the
+    last kept elapsed; it covers [start, start + WINDOW_S) over kept rows. The lowest
+    unrounded avg (count * 1000 / window sum) wins, ties to the earliest start. With no
+    candidate the whole session is one window starting at 0 (short_window). Linear time:
+    two pointers over prefix sums of frame times; the 1% low is computed only for the
+    chosen window. WINDOW_STEP_S is no longer used.
     """
     origin = kept[0]["elapsed"]
     rel = [values["elapsed"] - origin for values in kept]
@@ -400,36 +402,22 @@ def _worst_window(kept: list[dict[str, float]]) -> tuple[dict[str, float], bool,
     width = WINDOW_S * NS_PER_S
     if duration < width:
         return _window_result(0, frametimes), True, _avg_fps(frametimes)
+    prefix = [0.0, *itertools.accumulate(frametimes)]
     best = None
-    step = WINDOW_STEP_S * NS_PER_S
-    lo = hi = 0
-    start = 0
-    while start + width <= duration:
-        while lo < len(rel) and rel[lo] < start:
-            lo += 1
-        while hi < len(rel) and rel[hi] < start + width:
+    hi = 0
+    for lo, start in enumerate(rel):
+        if start + width > duration:
+            break
+        if lo > 0 and rel[lo - 1] == start:
+            continue  # same elapsed as the row before: the same window, already scored
+        while rel[hi] < start + width:  # stops by the last row: start + width <= rel[-1]
             hi += 1
-        if hi > lo:
-            avg = _avg_fps(frametimes[lo:hi])
-            if best is None or avg < best[0]:
-                best = (avg, start, lo, hi)
-            start += step
-        else:
-            start = _next_start_holding(rel[lo], start, step, width)
-    avg, start, lo, hi = best
-    return _window_result(start, frametimes[lo:hi]), False, avg
-
-
-def _next_start_holding(t: float, start: int, step: int, width: int) -> int:
-    """Item 20: smallest multiple of step after start whose window [s, s + width) can
-    hold time t (s + width > t). Int-float comparisons are exact; the loops fix rounding.
-    """
-    k = max(int((t - width) // step) + 1, start // step + 1)
-    while (k - 1) * step > start and (k - 1) * step + width > t:
-        k -= 1
-    while k * step + width <= t:
-        k += 1
-    return k * step
+        avg = 1000 * (hi - lo) / (prefix[hi] - prefix[lo])
+        if best is None or avg < best[0]:
+            best = (avg, start, lo, hi)
+    _, start, lo, hi = best
+    window = frametimes[lo:hi]
+    return _window_result(start, window), False, _avg_fps(window)
 
 
 def _window_result(start_ns: int, frametimes: list[float]) -> dict[str, float]:
