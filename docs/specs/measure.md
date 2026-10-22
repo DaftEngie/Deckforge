@@ -410,3 +410,23 @@ the answer wins.
     - **The text report never crashes on a file name.** It prints the file name with
       non-UTF-8 bytes shown as backslash escapes, so even a strict UTF-8 stdout
       can't fail.
+22. **Decided after the fourth verifier review, 2026-10-21.**
+    - **Playing time counts every gap between consecutive kept rows.** This replaces
+      item 21's "both rows kept" wording.
+      - The stall total subtracted for `short_log` is the sum of
+        `elapsed[k+1] − elapsed[k]` over consecutive **kept** rows k, k+1, wherever that
+        gap is over `GAP_NS`. Artifact and bad rows in between are ignored.
+      - Why: a 10-minute pause that ended in a MangoHud glitch row (an artifact) was
+        not subtracted, and 70 s of play was rated gold.
+    - **A lone forward spike in `elapsed` drops only itself.** This amends C8.
+      - Row *i* is bad if its `elapsed` is greater than the next data row's `elapsed`
+        (the next row that passes the other M1 checks), **and** that next row's
+        `elapsed` is ≥ the previous non-bad row's `elapsed`.
+      - The next row is then judged against the previous non-bad row as usual.
+      - Rows whose `elapsed` is lower than the previous non-bad row's are still bad
+        (C8). That now only happens when a timeline really goes backwards, not after one
+        spiked row.
+      - Why: one damaged `elapsed` pushed 55 s forward made 1,199 following rows bad.
+        That hid a 20 fps stretch, and the log was rated gold.
+      - Known limit, accepted: two or more consecutive spiked rows still drop the rows
+        after them, and F5 forces `not_enough_data` when that passes 5%.
