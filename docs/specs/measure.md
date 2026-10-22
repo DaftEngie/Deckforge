@@ -353,3 +353,36 @@ the answer wins.
       instead. So 24.75 prints as "24.8", while 29.96 still prints as "29.9".
       - Why: the real log showed "average 24.8 fps" in the report but "24.7" in the
         reason.
+19. **Decided after the verifier review, 2026-10-21 (F1–F5).** Default: a wrong pass is
+    worse than a cautious "not enough data" (R1). Fede can loosen these later.
+    - **F1, damaged rows.**
+      - A data row that the `csv` module itself rejects is a bad row (M1). Examples are
+        a field over the csv size limit, or a bare `\r` in a field.
+      - If any of lines 1–3 is rejected, raise `MeasureError` with a message saying the
+        header is unreadable.
+      - Never a traceback. A log cut off by a crash can end in many zero bytes.
+    - **F2, impossible frame times.**
+      - A row with `frametime` below `MIN_FRAMETIME_MS = 0.1` is a bad row (C8). No game
+        frame takes under 0.1 ms.
+      - JSON output uses `allow_nan=False`.
+    - **F4, the worst minute counts.**
+      - `gold` also needs `worst_window.avg_fps` ≥ `gold_avg`.
+      - `good_enough` also needs `worst_window.avg_fps` ≥ `good_avg`. Unrounded values
+        are compared.
+      - The new `fail` reason goes last, after the three in C11:
+        `"worst minute averaged {w} fps, below {t}"`, using the C18 number rule.
+      - When gold misses only because of its worst-minute test, the result is
+        `good_enough` if that level's tests pass, as with the other gold tests.
+    - **F5, too many unreadable rows.**
+      - When `bad_rows` is more than `MAX_BAD_SHARE = 0.05` of all data rows (bad + non-
+        bad, blank lines excluded), the warning `too_many_bad_rows` is added.
+      - In the M8 order it goes right after `bad_rows`.
+      - It forces `not_enough_data`, with the reason
+        `"more than 5% of rows were unreadable"`, where 5 is `MAX_BAD_SHARE*100`
+        formatted with `g`.
+      - Its reason goes last among the C18 reasons.
+    - **F3, kept as a known limit, warning only.** With no `gpu_load` column, the
+      warning `no_gpu_data` is added at the end of the M8 list:
+      "can't tell menus from gameplay without GPU load". It does not block a pass. A
+      game capped at 35 fps with the chip half idle is a real pass, so `not_gpu` alone
+      must not block one.
