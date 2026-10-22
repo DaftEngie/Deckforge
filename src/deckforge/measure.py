@@ -1,6 +1,6 @@
 """Read one MangoHud frame-time log and report how the session played.
 
-Spec: docs/specs/measure.md (M1-M12 plus clarifier items 1-20, which win where they
+Spec: docs/specs/measure.md (M1-M12 plus clarifier items 1-21, which win where they
 differ). The target comes from decision 0002. This module only reads: it never creates,
 changes or deletes a file (M12), and it adds no logging handlers (C15).
 
@@ -296,6 +296,17 @@ def _stalls(rows: list[dict[str, float]]) -> list[dict[str, float]]:
     return stalls
 
 
+def _stall_s_between_kept(rows: list[dict[str, float]], kept: list[dict[str, float]]) -> float:
+    """Item 21: unrounded seconds of stalls whose two rows are both kept (not artifacts)."""
+    kept_ids = {id(values) for values in kept}
+    total = 0
+    for earlier, later in zip(rows, rows[1:], strict=False):
+        gap = later["elapsed"] - earlier["elapsed"]
+        if gap > GAP_NS and id(earlier) in kept_ids and id(later) in kept_ids:
+            total += gap
+    return total / NS_PER_S
+
+
 # ---- M4: smoothness metrics ---------------------------------------------------------
 
 
@@ -411,7 +422,7 @@ def _window_result(start_ns: int, frametimes: list[float]) -> dict[str, float]:
 
 
 def _warnings(
-    duration_s: float | None,
+    playing_s: float | None,
     short_window: bool,
     gpu_mean: float | None,
     frames: int,
@@ -422,10 +433,11 @@ def _warnings(
 ) -> list[str]:
     """M8, item 19 F3, F5: each warning that applies, in the spec's order.
 
+    ``playing_s`` is duration_s minus stalls between two kept rows (item 21).
     ``data_rows`` is bad plus non-bad data rows, blank lines excluded.
     """
     checks = [
-        ("short_log", duration_s is not None and duration_s < SHORT_LOG_S),
+        ("short_log", playing_s is not None and playing_s < SHORT_LOG_S),
         ("short_window", short_window),
         ("likely_loading_or_menus", gpu_mean is not None and gpu_mean < LOADING_GPU_MEAN),
         ("few_frames", frames < TARGET["min_frames"]),
@@ -544,8 +556,11 @@ def analyze(log: MangoLog, *, fg_multiplier: int = 1) -> dict:
     kept, artifact_rows = _split_artifacts(log.rows)
     m = _frame_metrics(kept, fg_multiplier) if kept else _empty_metrics()
     limit, share = _limit(kept, log.columns)
+    playing_s = None
+    if m["duration_s"] is not None:
+        playing_s = m["duration_s"] - _stall_s_between_kept(log.rows, kept)
     warnings = _warnings(
-        m["duration_s"],
+        playing_s,
         m["short_window"],
         _gpu_mean(kept, log.columns),
         len(kept),
@@ -585,8 +600,9 @@ def _fps(value: float | None) -> str:
 
 
 def format_text(report: dict) -> str:
-    """M10: a short plain-English report."""
-    lines = [f"Log: {report['file']}"]
+    """M10: a short plain-English report; item 21: non-UTF-8 name bytes as escapes."""
+    name = os.fsencode(report["file"]).decode("utf-8", "backslashreplace")
+    lines = [f"Log: {name}"]
     duration = report["duration_s"]
     lines.append(
         f"Duration: {'n/a' if duration is None else f'{duration:.1f} s'}, {report['frames']} frames"
