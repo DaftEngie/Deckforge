@@ -1,6 +1,6 @@
 """Read one MangoHud frame-time log and report how the session played.
 
-Spec: docs/specs/measure.md (M1-M12 plus clarifier items 1-25, which win where they
+Spec: docs/specs/measure.md (M1-M12 plus clarifier items 1-26, which win where they
 differ). The target comes from decision 0002. This module only reads: it never creates,
 changes or deletes a file (M12), and it adds no logging handlers (C15).
 
@@ -47,6 +47,7 @@ SLOWER_THAN = (35, 30, 28)
 MIN_FRAMETIME_MS = 0.1  # item 19 F2: no game frame takes under 0.1 ms
 MAX_BAD_SHARE = 0.05  # item 19 F5: more bad rows than this share -> no verdict
 MAX_JUMP_NS = 86_400_000_000_000  # item 20: a forward elapsed jump over 24 h is a bad row
+FREEZE_MAX_S = 60  # item 26: a stall inside play lasting at most this long is a freeze
 
 # ---- Module-internal constants (values fixed by the spec, names are ours) -----------
 
@@ -297,6 +298,25 @@ def _split_artifacts(rows: list[dict[str, float]]) -> tuple[list[dict[str, float
     return kept, artifacts
 
 
+def _stall_gaps(rows: list[dict[str, float]]) -> list[tuple[float, float]]:
+    """M3, C7, C17: (earlier, later) elapsed of each gap > GAP_NS between consecutive
+    non-bad rows.
+    """
+    return [
+        (earlier["elapsed"], later["elapsed"])
+        for earlier, later in zip(rows, rows[1:], strict=False)
+        if later["elapsed"] - earlier["elapsed"] > GAP_NS
+    ]
+
+
+def _stall_entry(earlier: float, later: float, origin: float) -> dict[str, float]:
+    """The rounded stall dict; ``at_s`` is the earlier row's time from ``origin``."""
+    return {
+        "at_s": round((earlier - origin) / NS_PER_S, 1),
+        "duration_s": round((later - earlier) / NS_PER_S, 1),
+    }
+
+
 def _stalls(rows: list[dict[str, float]]) -> list[dict[str, float]]:
     """M3, C7, C17: elapsed gaps > GAP_NS between consecutive non-bad rows.
 
@@ -305,17 +325,30 @@ def _stalls(rows: list[dict[str, float]]) -> list[dict[str, float]]:
     if not rows:
         return []
     origin = rows[0]["elapsed"]
-    stalls = []
-    for earlier, later in zip(rows, rows[1:], strict=False):
-        gap = later["elapsed"] - earlier["elapsed"]
-        if gap > GAP_NS:
-            stalls.append(
-                {
-                    "at_s": round((earlier["elapsed"] - origin) / NS_PER_S, 1),
-                    "duration_s": round(gap / NS_PER_S, 1),
-                }
-            )
-    return stalls
+    return [_stall_entry(earlier, later, origin) for earlier, later in _stall_gaps(rows)]
+
+
+def _longest_freeze(
+    rows: list[dict[str, float]], kept: list[dict[str, float]]
+) -> dict[str, float] | None:
+    """Item 26: the longest freeze as its rounded stall dict, or None.
+
+    A freeze is a stall of at most FREEZE_MAX_S (unrounded) whose earlier row is not
+    before the first kept row and whose later row is not after the last kept row.
+    Longest by unrounded gap; ties go to the earliest.
+    """
+    if not kept:
+        return None
+    first, last = kept[0]["elapsed"], kept[-1]["elapsed"]
+    longest = None
+    for earlier, later in _stall_gaps(rows):
+        gap = later - earlier
+        inside = earlier >= first and later <= last
+        if inside and gap <= FREEZE_MAX_S * NS_PER_S and (longest is None or gap > longest[0]):
+            longest = (gap, earlier, later)
+    if longest is None:
+        return None
+    return _stall_entry(longest[1], longest[2], rows[0]["elapsed"])
 
 
 def _stall_s_between_kept(kept: list[dict[str, float]]) -> float:
@@ -474,16 +507,18 @@ def _verdict(
     low: float | None,
     real_low: float | None,
     worst_avg: float | None,
+    freeze: dict[str, float] | None = None,
 ) -> tuple[str, list[str]]:
     """M9, C1, C11, C18, item 19 F4: verdict and reasons from unrounded values.
 
     Any unrepresentative-log warning (N = 0 always has few_frames) -> not_enough_data,
-    with one reason per cause.
+    with one reason per cause. Item 26: a freeze blocks gold and good_enough; its
+    reason goes after the other fail reasons.
     """
     causes = [NOT_ENOUGH_DATA_TEXT[name] for name in warnings if name in NOT_ENOUGH_DATA_TEXT]
     if causes:
         return "not_enough_data", causes
-    floor_ok = real_low >= TARGET["real_low_floor"]
+    floor_ok = real_low >= TARGET["real_low_floor"] and freeze is None
     gold_avg, good_avg = TARGET["gold_avg"], TARGET["good_avg"]
     if avg >= gold_avg and low >= TARGET["gold_low"] and floor_ok and worst_avg >= gold_avg:
         return "gold", []
@@ -496,6 +531,10 @@ def _verdict(
         (worst_avg, good_avg, "worst minute averaged {} fps, below {:g}"),
     ]
     reasons = [text.format(_reason_number(v, t), t) for v, t, text in tests if v < t]
+    if freeze is not None:
+        reasons.append(
+            f"the game stopped drawing for {freeze['duration_s']:.1f} s at {freeze['at_s']:.1f} s"
+        )
     return "fail", reasons
 
 
@@ -580,7 +619,8 @@ def analyze(log: MangoLog, *, fg_multiplier: int = 1) -> dict:
         artifact_rows,
         "gpu_load" in log.columns,
     )
-    verdict, reasons = _verdict(warnings, m["avg"], m["low"], m["real_low"], m["worst_avg"])
+    freeze = _longest_freeze(log.rows, kept)
+    verdict, reasons = _verdict(warnings, m["avg"], m["low"], m["real_low"], m["worst_avg"], freeze)
     duration_s = None if m["duration_s"] is None else round(m["duration_s"], 1)
     return {
         **m["report"],
