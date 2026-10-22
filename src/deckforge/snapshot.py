@@ -13,10 +13,10 @@
 Nothing outside out_dir is written (S9). Copied files are checked with lstat and opened
 with O_NOFOLLOW, so a link's target is never read; folder sizes are summed with os.scandir
 and lstat, never following links. Registry files (kind "reg" or "registry") are never
-opened. out_dir is refused (SnapshotError) inside steam_root, a library or <home>/homebrew,
-before anything is created; an existing target is never overwritten (S8). The zip is
-written to <target>.partial and moved into place; on any error the partial is removed and
-the error re-raised.
+opened. out_dir is refused (SnapshotError) inside steam_root, a library, <home>/homebrew
+or <home>/deckforge/logs, before anything is created; an existing target is never
+overwritten (S8). The zip is written to <target>.partial and moved into place; on any error
+the partial is removed and the error re-raised.
 
 CLI: python -m deckforge.snapshot --steam-root PATH [--home PATH] [--out-dir PATH]
 (prints the zip path and counts; exit 2 on SnapshotError)
@@ -52,6 +52,7 @@ _LOG_COUNT = 5
 _EXCLUDED_KINDS = ("reg", "registry")
 _OS_RELEASE_KEYS = ("NAME", "PRETTY_NAME", "VERSION_ID", "BUILD_ID", "VARIANT_ID")
 _CACHE_FOLDERS = ("shadercache", "compatdata")
+_FIRST_SHORTCUT_APPID = 2**31  # non-Steam shortcuts: never orphans (W2)
 _READ_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
 
 _log = logging.getLogger("deckforge.snapshot")  # not __name__, which is __main__ under -m
@@ -157,7 +158,11 @@ def _build(
     logs = _newest_logs(Path(home_text, "deckforge", "logs"), manifest.issues)
     system = _system(home_text, scan)
 
-    Path(out_dir).mkdir(parents=True, exist_ok=True)
+    try:
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+    except OSError as exc:  # a file, a dangling link, or mkdir refused (N1)
+        _log.warning("cannot create out_dir %s: %s", out_dir, _why(exc))
+        raise SnapshotError(f"cannot create out_dir {os.fspath(out_dir)!r}: {_why(exc)}") from exc
     partial = Path(f"{target}.partial")
     try:
         handle = partial.open("xb")
@@ -197,10 +202,14 @@ def _refuse_out_dir(
     out_dir: str | os.PathLike[str],
     scan: dict[str, Any],
 ) -> None:
-    """S8: out_dir must not be steam_root, a library or <home>/homebrew, nor inside one,
-    after realpath on both sides. Checked before anything is created."""
+    """S8: out_dir must not be steam_root, a library, <home>/homebrew or <home>/deckforge/logs
+    (W1), nor inside one, after realpath on both sides. Checked before anything is created."""
     real_out = os.path.realpath(out_dir)
-    guarded = [os.fspath(steam_root), str(Path(home, "homebrew"))]
+    guarded = [
+        os.fspath(steam_root),
+        str(Path(home, "homebrew")),
+        str(Path(home, "deckforge", "logs")),
+    ]
     guarded += [entry["path"] for entry in scan["libraries"] if Path(entry["path"]).is_absolute()]
     for folder in guarded:
         real = os.path.realpath(folder)
@@ -227,9 +236,13 @@ def _copy_settings(
     archive: zipfile.ZipFile, stamp: tuple[int, ...], scan: dict[str, Any], manifest: _Manifest
 ) -> int:
     copied = 0
+    cards_per_appid: dict[int, int] = {}
     for card in scan["games"]:
         if card["installed"] is not True:
-            continue
+            continue  # copies nothing, so it takes no "-<k>" number (F1)
+        appid = card["appid"]
+        k = cards_per_appid[appid] = cards_per_appid.get(appid, 0) + 1
+        folder = str(appid) if k == 1 else f"{appid}-{k}"
         for n, entry in enumerate(card["settings_files"]):
             source = entry["path"]
             try:
@@ -239,7 +252,7 @@ def _copy_settings(
             except _Skip as skip:
                 manifest.skip(source, skip)
                 continue
-            name = f"settings/{card['appid']}/{n}_{Path(source).name}"
+            name = f"settings/{folder}/{n}_{Path(source).name}"
             _add(archive, stamp, name, data)
             manifest.files.append({"zip_name": name, "source": source, "size": len(data)})
             copied += 1
@@ -300,18 +313,21 @@ def _sizes(scan: dict[str, Any]) -> dict[str, Any]:
         )
     known = {card["appid"] for card in scan["games"]}
     orphans = []
+    non_steam = []
     for library in scan["libraries"]:
         if not library["available"]:
             continue
         for kind in _CACHE_FOLDERS:
             folder = str(Path(library["path"], "steamapps", kind))
-            for path in _orphan_paths(folder, known, issues):
-                orphans.append({"path": path, "size": _size(path, issues)})
-    return {"games": games, "orphans": orphans, "issues": issues}
+            for appid, path in _orphan_paths(folder, known, issues):
+                listed = non_steam if appid >= _FIRST_SHORTCUT_APPID else orphans
+                listed.append({"path": path, "size": _size(path, issues)})
+    return {"games": games, "orphans": orphans, "non_steam": non_steam, "issues": issues}
 
 
-def _orphan_paths(folder: str, known: set[int], issues: list[_Issue]) -> list[str]:
-    """All-digit entries of `folder` whose appid has no card, sorted by name."""
+def _orphan_paths(folder: str, known: set[int], issues: list[_Issue]) -> list[tuple[int, str]]:
+    """(appid, path) of the all-digit entries of `folder` whose appid has no card, sorted by
+    name."""
     try:
         with os.scandir(folder) as listing:
             names = sorted(entry.name for entry in listing)
@@ -325,7 +341,7 @@ def _orphan_paths(folder: str, known: set[int], issues: list[_Issue]) -> list[st
     for name in names:
         appid = _as_int(name)
         if appid is not None and appid not in known:
-            found.append(str(Path(folder, name)))
+            found.append((appid, str(Path(folder, name))))
     return found
 
 
@@ -366,7 +382,14 @@ def _size(top: str, issues: list[_Issue]) -> int | None:
 def _plugins(plugins_dir: Path, issues: list[_Issue]) -> list[dict[str, Any]]:
     try:
         with os.scandir(plugins_dir) as listing:
-            folders = sorted(entry.name for entry in listing if entry.is_dir(follow_symlinks=False))
+            folders = []
+            for entry in sorted(listing, key=lambda item: item.name):
+                if entry.is_dir(follow_symlinks=False):
+                    folders.append(entry.name)
+                else:  # a link (to anything) or not a folder (W3)
+                    issues.append(
+                        _issue("plugin_folder_not_regular", entry.path, "not a plain folder")
+                    )
     except (FileNotFoundError, NotADirectoryError):
         issues.append(_issue("decky_not_found", str(plugins_dir), "no Decky plugins folder"))
         return []
