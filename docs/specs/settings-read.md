@@ -327,3 +327,9 @@ Reviewed 2026-10-22 by the clarifier. These answers are binding and win over S1â
     `snapshot.py` / `measure.py`. Shared code is factored only if it can be done
     without changing those modules' behaviour; otherwise it follows the same pattern,
     and the PR says why.
+19. **Decided after implementation, 2026-10-22: the CLI reports games only.**
+    - Cards whose `kind` is not `"game"` (Proton, Steam Linux Runtime, redistributables)
+      are left out of the CLI's output, both text and JSON.
+    - An `--appid` that names a non-game card is an exit-2 error that says it is a tool,
+      not a game.
+    - `read_settings` itself still accepts any card.
