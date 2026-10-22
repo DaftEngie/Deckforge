@@ -37,6 +37,9 @@ parse_log(path) -> MangoLog
     (the next row passing the other M1 checks) AND that next row's elapsed is >= the
     previous non-bad row's; a lone forward spike drops only itself. Rows below the
     previous non-bad row are still bad (a real backwards timeline).
+  Item 23: the "next data row" is the next row passing the single-row checks (parses,
+    finite, frametime and gpu_load in range); the 24 h jump check does not choose it.
+  Item 24: the first data row is bad if its elapsed is greater than the next data row's.
   Invariants: reads only; never writes (see test_measure_cli.py, M12).
 """
 
@@ -595,3 +598,46 @@ def test_c22_spike_on_the_last_row_is_kept(tmp_path):
     log = parse(tmp_path, [row(25.0, 0), row(25.0, S), row(25.0, 900 * S)])
     assert log.bad_rows == 0
     assert len(log.rows) == 3
+
+
+# ---- item 24: the spike rule covers the first data row ------------------------------
+
+
+def test_c24_first_row_spike_is_bad(tmp_path):
+    # 56 s (damaged), 1, 2, 3 s: 56 > 1, so only line 4 is bad; 1, 2, 3 s are kept.
+    log = parse(tmp_path, [row(25.0, e) for e in (56 * S, 1 * S, 2 * S, 3 * S)])
+    assert log.bad_rows == 1
+    assert log.first_bad_line == 4
+    assert kept_elapsed(log) == [float(1 * S), float(2 * S), float(3 * S)]
+
+
+@pytest.mark.parametrize(
+    "elapsed", [(1 * S, 1 * S, 2 * S), (0, 1 * S, 2 * S)], ids=["equal", "below"]
+)
+def test_c24_first_row_equal_or_below_next_is_kept(tmp_path, elapsed):
+    log = parse(tmp_path, [row(25.0, e) for e in elapsed])
+    assert log.bad_rows == 0
+    assert kept_elapsed(log) == [float(e) for e in elapsed]
+
+
+def test_c24_first_row_compared_with_next_row_passing_single_row_checks(tmp_path):
+    # 56 s, a frametime=nan row at 100 s (fails single-row checks), 1 s, 2 s.
+    # The next data row for line 4 is the 1 s row (not the nan row's 100 s): 56 > 1, so
+    # line 4 is bad; with the nan row that is 2 bad rows, and 1 s, 2 s are kept.
+    lines = [row(25.0, 56 * S), row("nan", 100 * S), row(25.0, S), row(25.0, 2 * S)]
+    log = parse(tmp_path, lines)
+    assert log.bad_rows == 2
+    assert log.first_bad_line == 4
+    assert kept_elapsed(log) == [float(S), float(2 * S)]
+
+
+def test_c24_clean_first_row_and_damaged_lower_second_row_lose_one_row(tmp_path):
+    # 10 s, 1 s (damaged, too low), 10.05 s, 10.075 s. Item 24: the first row (10 s) is
+    # greater than the next data row (1 s), so it is the one dropped; 1 s then has no
+    # previous non-bad row and is not above its next row (10.05 s), so it is kept.
+    # One row lost either way.
+    elapsed = [10 * S, 1 * S, 10_050 * MS, 10_075 * MS]
+    log = parse(tmp_path, [row(25.0, e) for e in elapsed])
+    assert log.bad_rows == 1
+    assert log.first_bad_line == 4
+    assert kept_elapsed(log) == [float(1 * S), float(10_050 * MS), float(10_075 * MS)]

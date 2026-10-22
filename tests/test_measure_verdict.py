@@ -707,3 +707,43 @@ def test_c22_one_spiked_row_before_slow_stretch_still_fails(tmp_path):
         "1% low 20.0 fps is below 28",
         "worst minute averaged 23.3 fps, below 30",
     ]
+
+
+# ---- item 24: a damaged first-row elapsed must not hide a slow opening --------------
+
+
+def slow_opening(spike_first):
+    """Verifier round 5: 1100 rows at 50 ms (0.05 .. 55.0 s), 48000 at 25 ms (to 1255 s)."""
+    lines = [row(50.0, (i + 1) * 50 * MS, gpu_load=99) for i in range(1100)]
+    lines += [row(25.0, 55 * S + (i + 1) * 25 * MS, gpu_load=99) for i in range(48000)]
+    if spike_first:
+        lines[0] = row(50.0, 56 * S, gpu_load=99)
+    return lines
+
+
+def test_c24_slow_opening_fails(tmp_path):
+    # N 49100, sum 55000 + 1200000 = 1255000 ms -> avg 39.1; P99 index 48608 -> 50 ms.
+    # Worst minute [0, 60) from 0.05 s: 1100 x 50 ms + 201 x 25 ms = 1301 / 60025 -> 21.7.
+    r = report(tmp_path, slow_opening(spike_first=False))
+    assert r["bad_rows"] == 0
+    assert r["worst_window"] == {"start_s": 0.0, "avg_fps": 21.7, "low_1pct_fps": 20.0}
+    assert r["verdict"] == "fail"
+
+
+def test_c24_first_row_spike_does_not_turn_fail_into_pass(tmp_path):
+    # First row's elapsed set to 56 s: 56 > 0.1 s (next row), so only it is bad.
+    # N 49099, sum 1254950 ms -> avg 39.1; P99 index 48608 -> 50 ms -> 20.0.
+    # Worst minute [0, 60) from 0.1 s: 1099 x 50 + 203 x 25 = 1302 / 60025 -> 21.7.
+    r = report(tmp_path, slow_opening(spike_first=True))
+    assert r["bad_rows"] == 1
+    assert r["first_bad_line"] == 4
+    assert r["frames"] == 49099
+    assert r["avg_fps"] == 39.1
+    assert r["low_1pct_fps"] == 20.0
+    assert r["worst_window"] == {"start_s": 0.0, "avg_fps": 21.7, "low_1pct_fps": 20.0}
+    assert r["warnings"] == ["bad_rows"]
+    assert r["verdict"] == "fail"
+    assert r["reasons"] == [
+        "1% low 20.0 fps is below 28",
+        "worst minute averaged 21.7 fps, below 30",
+    ]
