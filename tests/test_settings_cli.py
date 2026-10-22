@@ -294,6 +294,30 @@ def test_i19_appid_of_a_tool_exits_2_saying_it_is_a_tool(tree, capsys, tool, mod
     assert "tool" in err.lower()
 
 
+# ---------------------------------------------------------------------------- item 20
+
+
+@pytest.mark.parametrize("digits", [4301, 10])
+@pytest.mark.parametrize("mode", [[], ["--json"]], ids=["text", "json"])
+def test_i20_a_huge_number_in_one_game_does_not_stop_the_report(tree, capsys, digits, mode):
+    tree["files"][f"{REMATCH}_gus"].write_bytes(
+        b"[ScalabilityGroups]\r\nsg.ResolutionQuality=" + b"1" * digits + b"\r\n"
+    )
+    code, out, err = run_main(["--steam-root", str(tree["root"]), *mode], capsys)
+    assert code == 0, err
+    expected = {**TREE_STATUS, REMATCH: "mapped_with_unknown_values"}
+    if mode:
+        reports = json.loads(out)
+        assert {r["appid"]: r["status"] for r in reports} == expected
+        knob = by_key(only_entry(reports[[r["appid"] for r in reports].index(REMATCH)], UNREAL))
+        got = knob[(SG, "sg.ResolutionQuality")]
+        assert (got["present"], got["value"], got["known"]) == (True, "1" * digits, False)
+    else:
+        blocks = text_blocks(out, expected)
+        for appid, status in expected.items():
+            assert has_word(blocks[appid], status), NAMES[appid]
+
+
 # ---------------------------------------------------------------------------- S8 text
 
 

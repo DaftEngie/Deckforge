@@ -28,7 +28,10 @@
 #         value is the string read; "key=" gives value "" and known false (answer 7).
 #   Post: known. level/enum/bool: value in values, exactly and case-sensitively (answer 10).
 #         percent: a plain integer string within min-max, so "100.000000" is not known
-#         (answer 13). number: parses as a finite float within whichever bounds are given
+#         (answer 13). Item 20 makes that exact: the value must fully match -?[0-9]{1,9}
+#         (ASCII digits, so "0010" is 10 and known, "+50", "5_0" and Arabic-Indic digits
+#         are not), and a longer digit string is unknown, never an exception.
+#         number: parses as a finite float within whichever bounds are given
 #         (answer 1).
 #   Post: a parsed file no map matched is in unmapped_files (S4, answer 16), entries read
 #         as a path string or an object with "path" (shape unspecified).
@@ -411,6 +414,46 @@ def test_a13_resolution_quality_known_only_as_integer_10_to_100(tmp_path, maps, 
     report, _ = one_file(tmp_path, maps, gus(f"sg.ResolutionQuality={value}"), GUS)
     got = unreal_knob(report, "sg.ResolutionQuality")
     assert (got["present"], got["value"], got["known"]) == (True, value, known)
+    assert report["status"] == ("mapped" if known else "mapped_with_unknown_values")
+
+
+@pytest.mark.parametrize(
+    "value, known",
+    [
+        ("1" * 4301, False),
+        ("1" * 10, False),
+        ("0000000050", False),
+        ("-" + "9" * 4301, False),
+        ("000000050", True),
+        ("0010", True),
+        ("0100", True),
+        ("-5", False),
+        ("-050", False),
+        ("+50", False),
+        ("\u0665\u0660", False),
+        ("5_0", False),
+        ("50 ", True),
+    ],
+    ids=[
+        "4301-digits",
+        "10-digits",
+        "10-digits-in-range",
+        "negative-4301-digits",
+        "9-digits-in-range",
+        "leading-zeros-10",
+        "leading-zeros-100",
+        "minus-5",
+        "minus-050",
+        "plus-50",
+        "arabic-indic-50",
+        "underscore",
+        "trailing-space-stripped",
+    ],
+)
+def test_i20_percent_known_only_for_up_to_9_ascii_digits_in_range(tmp_path, maps, value, known):
+    report, _ = one_file(tmp_path, maps, gus(f"sg.ResolutionQuality={value}"), GUS)
+    got = unreal_knob(report, "sg.ResolutionQuality")
+    assert (got["present"], got["value"], got["known"]) == (True, value.strip(), known)
     assert report["status"] == ("mapped" if known else "mapped_with_unknown_values")
 
 

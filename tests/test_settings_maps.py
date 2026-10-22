@@ -45,6 +45,7 @@
 #         a single-valued knob is never level (answer 2).
 
 import json
+import re
 
 import pytest
 from test_settings_support import (
@@ -423,3 +424,12 @@ def test_a5_dd2_knob_type_values_confidence_and_source(key):
         assert k["values"] == values
     assert k["confidence"] == "likely"
     assert k["source"] == DD2_SOURCE
+
+
+@pytest.mark.parametrize(
+    "key, line",
+    [("SpeedTreeWind_Branch", 91), ("SpeedTreeWind_Global", 92), ("SpeedTreeWind_Leaf", 93)],
+)
+def test_i20_wilds_speedtreewind_sources_cite_their_real_line(key, line):
+    source = map_knob(builtin_map(settings.load_maps(), RE_GRAPHICS), "Graphics", key)["source"]
+    assert re.search(rf"(?<!\d){line}(?!\d)", source), source
