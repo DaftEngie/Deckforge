@@ -333,3 +333,23 @@ the answer wins.
       negative. This replaces C7 for stalls only. Durations and windows still use the
       first kept row.
     - `first_bad_line` counts physical file lines, blank lines included.
+18. **Found by running the code on Fede's real logs, 2026-10-21.**
+    - **Unrepresentative logs never get a pass verdict.** The verdict is
+      `"not_enough_data"` if `short_log`, `likely_loading_or_menus` or `few_frames`
+      applies, or if N = 0.
+      - Why: a 3.2 s title-screen log (`..._18-56-51.csv`) was rated `gold`, and a 60 s
+        loading-and-menus log (`..._19-05-17.csv`) was rated `good_enough`. A wrong pass
+        is the worst result (R1).
+    - **`not_enough_data` explains itself.** `reasons` lists one line per cause, in this
+      order and with these exact strings:
+      - `"log is shorter than 120 s"`, where 120 is `SHORT_LOG_S` formatted with `g`;
+      - `"the graphics chip was mostly idle, likely loading or menus"`;
+      - `"fewer than 300 frames"`, where 300 is `min_frames`.
+      - For N = 0 the list is `["fewer than 300 frames"]`. This replaces the
+        "`reasons = []`" rule in C2 and C11 for `not_enough_data`.
+    - **Numbers in reasons match the report.** `{a}`, `{b}` and `{c}` use the same
+      rounding as the report (`round(x, 1)`, formatted `.1f`). Only if that rounded
+      value is at or above the threshold does the reason use the round-down value
+      instead. So 24.75 prints as "24.8", while 29.96 still prints as "29.9".
+      - Why: the real log showed "average 24.8 fps" in the report but "24.7" in the
+        reason.
