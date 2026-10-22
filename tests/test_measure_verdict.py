@@ -623,8 +623,9 @@ def test_c21_long_healthy_log_with_10_minute_stall_judged_normally(tmp_path):
 
 
 def test_c21_stall_to_an_artifact_is_not_subtracted(tmp_path):
-    # 0 .. 130 s kept, then an artifact 30 s later: that stall is not between two kept
-    # rows, so playing time = duration_s = 130 s (not 100 s).
+    # 0 .. 130 s kept, then an artifact 30 s later as the LAST row. Still valid under
+    # item 22: no kept row follows the artifact, so there is no gap between consecutive
+    # kept rows to subtract; playing time = duration_s = 130 s (not 100 s).
     lines = [row(25.0, k * 25 * MS) for k in range(5201)]
     lines.append(row(ARTIFACT, 160 * S))
     r = report(tmp_path, lines)
@@ -632,3 +633,77 @@ def test_c21_stall_to_an_artifact_is_not_subtracted(tmp_path):
     assert r["stalls"] == [{"at_s": 130.0, "duration_s": 30.0}]
     assert "short_log" not in r["warnings"]
     assert r["verdict"] == "gold"
+
+
+# ---- item 22: stalls between consecutive kept rows, lone spikes ---------------------
+
+
+def test_c22_long_gap_ending_in_artifact_is_subtracted(tmp_path):
+    # Verifier round 4: 2000 rows at 25 ms (0.025 .. 50.0 s), 10 min with no frames, one
+    # uptime-glitch artifact at 650 s (22778400 > 2 x 600000 ms), 800 rows to 670.0 s.
+    # Kept rows 50.0 s -> 650.025 s are consecutive kept rows: that 600.025 s gap is
+    # subtracted, so playing time = 669.975 - 600.025 = 69.95 s < 120.
+    lines = [row(25.0, (i + 1) * 25 * MS, gpu_load=95) for i in range(2000)]
+    lines.append(row(22778400.0, 650 * S, gpu_load=95))
+    lines += [row(25.0, 650 * S + (i + 1) * 25 * MS, gpu_load=95) for i in range(800)]
+    r = report(tmp_path, lines)
+    assert r["frames"] == 2800
+    assert r["artifact_rows"] == 1
+    assert r["duration_s"] == 670.0
+    assert r["stalls"] == [{"at_s": 50.0, "duration_s": 600.0}]
+    assert r["warnings"] == ["short_log", "artifact_rows"]
+    assert r["verdict"] == "not_enough_data"
+    assert r["reasons"] == [SHORT]
+
+
+def test_c22_long_gap_with_bad_row_inside_is_subtracted(tmp_path):
+    # Same shape, but the row inside the gap is a bad row (gpu_load nan) at 350 s.
+    lines = [row(25.0, (i + 1) * 25 * MS, gpu_load=95) for i in range(2000)]
+    lines.append(row(25.0, 350 * S, gpu_load="nan"))
+    lines += [row(25.0, 650 * S + (i + 1) * 25 * MS, gpu_load=95) for i in range(800)]
+    r = report(tmp_path, lines)
+    assert r["bad_rows"] == 1
+    assert r["verdict"] == "not_enough_data"
+    assert r["reasons"] == [SHORT]
+
+
+def thirty_minutes_with_slow_stretch():
+    """Verifier round 4: 900 s at 25 ms, 50 s at 50 ms (20 fps), 850 s at 25 ms.
+
+    Rows: 36000 at 0.025 .. 900.0 s, 1000 at 900.05 .. 950.0 s, 34000 at 950.025 ..
+    1800.0 s; elapsed = t0 + (i + 1) x frame time.
+    """
+    a = [row(25.0, (i + 1) * 25 * MS, gpu_load=95) for i in range(36000)]
+    slow = [row(50.0, 900 * S + (i + 1) * 50 * MS, gpu_load=95) for i in range(1000)]
+    b = [row(25.0, 950 * S + (i + 1) * 25 * MS, gpu_load=95) for i in range(34000)]
+    return a + slow + b
+
+
+def test_c22_thirty_minute_log_with_slow_stretch_fails(tmp_path):
+    # 71000 frames, sum 1800000 ms -> avg 39.4; P99 index 70289 -> 50 ms -> 20.0.
+    # Worst minute: [890, 950) etc. = 1400 rows / 60000 ms = 23.33, earliest 890.
+    r = report(tmp_path, thirty_minutes_with_slow_stretch())
+    assert r["bad_rows"] == 0
+    assert r["worst_window"] == {"start_s": 890.0, "avg_fps": 23.3, "low_1pct_fps": 20.0}
+    assert r["verdict"] == "fail"
+
+
+def test_c22_one_spiked_row_before_slow_stretch_still_fails(tmp_path):
+    # The last row of the first block (900.0 s) is pushed +55 s to 955.0 s. It is
+    # greater than the next row (900.05 s), and 900.05 >= the previous non-bad row
+    # (899.975 s): only that row is bad. 70999 frames: avg 39.4, P99 index 70289 ->
+    # 50 ms -> 20.0; worst minute [890, 950): 1399 rows / 59975 ms = 23.33 -> 23.3.
+    lines = thirty_minutes_with_slow_stretch()
+    lines[35999] = row(25.0, 955 * S, gpu_load=95)
+    r = report(tmp_path, lines)
+    assert r["bad_rows"] == 1
+    assert r["frames"] == 70999
+    assert r["avg_fps"] == 39.4
+    assert r["low_1pct_fps"] == 20.0
+    assert r["worst_window"] == {"start_s": 890.0, "avg_fps": 23.3, "low_1pct_fps": 20.0}
+    assert r["warnings"] == ["bad_rows"]
+    assert r["verdict"] == "fail"
+    assert r["reasons"] == [
+        "1% low 20.0 fps is below 28",
+        "worst minute averaged 23.3 fps, below 30",
+    ]

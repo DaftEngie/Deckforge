@@ -33,6 +33,10 @@ parse_log(path) -> MangoLog
     - with a gpu_load column, gpu_load < 0 or > 100 is a bad row (0 and 100 kept).
     - elapsed more than MAX_JUMP_NS (24 h) after the previous non-bad row is a bad row;
       later rows are compared with that same previous non-bad row.
+  Item 22 (amends C8): row i is bad if its elapsed is greater than the next data row's
+    (the next row passing the other M1 checks) AND that next row's elapsed is >= the
+    previous non-bad row's; a lone forward spike drops only itself. Rows below the
+    previous non-bad row are still bad (a real backwards timeline).
   Invariants: reads only; never writes (see test_measure_cli.py, M12).
 """
 
@@ -323,12 +327,20 @@ def test_c8_negative_elapsed_is_bad(tmp_path):
 
 
 def test_c8_elapsed_going_backwards_is_bad_against_previous_non_bad_row(tmp_path):
-    # elapsed: 1 s, 3 s, 2 s (bad: < 3 s), 2.5 s (bad: still < 3 s), 4 s (fine)
+    # elapsed: 1 s, 3 s, 2 s, 2.5 s, 4 s. Item 22 changed this expectation: the 3 s row
+    # is greater than the next row (2 s) and 2 s >= the previous non-bad row (1 s), so
+    # 3 s is a lone forward spike and is the only bad row. 2 s and 2.5 s, which C8
+    # alone dropped (below 3 s), are now kept.
     elapsed = [1 * S, 3 * S, 2 * S, 2 * S + S // 2, 4 * S]
     log = parse(tmp_path, [row(25.0, e) for e in elapsed])
-    assert log.bad_rows == 2
-    assert log.first_bad_line == 6
-    assert [r["elapsed"] for r in log.rows] == [float(1 * S), float(3 * S), float(4 * S)]
+    assert log.bad_rows == 1
+    assert log.first_bad_line == 5
+    assert [r["elapsed"] for r in log.rows] == [
+        float(1 * S),
+        float(2 * S),
+        float(2 * S + S // 2),
+        float(4 * S),
+    ]
 
 
 def test_c8_equal_elapsed_is_not_bad(tmp_path):
@@ -504,15 +516,17 @@ def test_c20_elapsed_jump_of_exactly_24_h_is_kept(tmp_path):
 
 
 def test_c20_elapsed_jump_over_24_h_is_bad_and_later_rows_compare_to_last_good(tmp_path):
-    # line 4: 0 s; line 5: 24 h + 1 ns (bad: jump); line 6: 1 s (fine against line 4);
-    # line 7: 0.5 s (bad: below line 6's 1 s); line 8: 2 s.
+    # line 4: 0 s; line 5: 24 h + 1 ns (bad: jump); line 6: 1 s; line 7: 0.5 s; line 8: 2 s.
+    # Item 22 changed which row goes: line 6 (1 s) is greater than line 7 (0.5 s) and
+    # 0.5 s >= line 4 (the previous non-bad row), so line 6 is a lone spike (bad) and
+    # line 7 is kept. Before item 22, line 6 was kept and line 7 dropped.
     elapsed = [START_NS, START_NS + DAY + 1, START_NS + S, START_NS + S // 2, START_NS + 2 * S]
     log = parse(tmp_path, [row(25.0, e) for e in elapsed])
     assert log.bad_rows == 2
     assert log.first_bad_line == 5
     assert [r["elapsed"] for r in log.rows] == [
         float(START_NS),
-        float(START_NS + S),
+        float(START_NS + S // 2),
         float(START_NS + 2 * S),
     ]
 
@@ -522,3 +536,62 @@ def test_c20_elapsed_1e19_is_bad_row(tmp_path):
     assert log.bad_rows == 1
     assert log.first_bad_line == 14
     assert len(log.rows) == 10
+
+
+# ---- item 22: a lone forward spike drops only itself --------------------------------
+
+
+def kept_elapsed(log):
+    return [r["elapsed"] for r in log.rows]
+
+
+def test_c22_lone_forward_spike_drops_only_itself(tmp_path):
+    # 0, 1, 2 s, then 58 s (one damaged value), then 4, 5 s. 58 > 4 and 4 >= 2: only
+    # line 7 is bad; 4 s and 5 s are kept (C8 alone would have dropped them too).
+    elapsed = [0, 1 * S, 2 * S, 58 * S, 4 * S, 5 * S]
+    log = parse(tmp_path, [row(25.0, e) for e in elapsed])
+    assert log.bad_rows == 1
+    assert log.first_bad_line == 7
+    assert kept_elapsed(log) == [float(e) for e in (0, 1 * S, 2 * S, 4 * S, 5 * S)]
+
+
+def test_c22_spike_is_judged_against_next_row_that_passes_other_checks(tmp_path):
+    # 0, 1 s, 50 s (spike), a gpu_load=nan row at 100 s (bad on its own), 3 s, 4 s.
+    # The next data row for 50 s is the 3 s row, not the nan row: 50 > 3 and 3 >= 1,
+    # so 50 s is bad; 3 s and 4 s are kept. 2 bad rows (lines 6 and 7).
+    lines = [row(25.0, 0), row(25.0, S), row(25.0, 50 * S)]
+    lines += [row(25.0, 100 * S, gpu_load="nan"), row(25.0, 3 * S), row(25.0, 4 * S)]
+    log = parse(tmp_path, lines)
+    assert log.bad_rows == 2
+    assert log.first_bad_line == 6
+    assert kept_elapsed(log) == [float(e) for e in (0, 1 * S, 3 * S, 4 * S)]
+
+
+def test_c22_real_backwards_timeline_is_still_bad(tmp_path):
+    # 1, 2, 3, 4 s, then a reset to 0.5, 1, 1.5 s, then 5 s. The 4 s row is not a spike:
+    # its next row (0.5 s) is below the previous non-bad row (3 s). So 4 s is kept and
+    # 0.5, 1, 1.5 s are bad (C8: below 4 s); 5 s is kept.
+    elapsed = [1 * S, 2 * S, 3 * S, 4 * S, S // 2, S, 3 * S // 2, 5 * S]
+    log = parse(tmp_path, [row(25.0, e) for e in elapsed])
+    assert log.bad_rows == 3
+    assert log.first_bad_line == 8
+    assert kept_elapsed(log) == [float(e) for e in (1 * S, 2 * S, 3 * S, 4 * S, 5 * S)]
+
+
+def test_c22_two_consecutive_spikes_drop_the_rows_after_them(tmp_path):
+    # 0, 1, 2 s, then 60 s and 61 s (two damaged values), then 3, 4, 5 s.
+    # 60 s: next row 61 s is not lower -> kept. 61 s: next row 3 s is lower, but 3 s is
+    # below the previous non-bad row (60 s) -> kept. 3, 4, 5 s: below 61 s -> bad (C8).
+    # The accepted known limit: 3 bad rows (lines 9, 10, 11).
+    elapsed = [0, 1 * S, 2 * S, 60 * S, 61 * S, 3 * S, 4 * S, 5 * S]
+    log = parse(tmp_path, [row(25.0, e) for e in elapsed])
+    assert log.bad_rows == 3
+    assert log.first_bad_line == 9
+    assert kept_elapsed(log) == [float(e) for e in (0, 1 * S, 2 * S, 60 * S, 61 * S)]
+
+
+def test_c22_spike_on_the_last_row_is_kept(tmp_path):
+    # No next data row, so the spike rule cannot apply (item 21's damaged-last-row case).
+    log = parse(tmp_path, [row(25.0, 0), row(25.0, S), row(25.0, 900 * S)])
+    assert log.bad_rows == 0
+    assert len(log.rows) == 3
