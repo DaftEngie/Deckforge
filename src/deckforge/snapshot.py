@@ -161,7 +161,7 @@ def _build(
     try:
         Path(out_dir).mkdir(parents=True, exist_ok=True)
     except OSError as exc:  # a file, a dangling link, or mkdir refused (N1)
-        _log.warning("cannot create out_dir %s: %s", out_dir, _why(exc))
+        _log.debug("cannot create out_dir %s: %s", out_dir, _why(exc))
         raise SnapshotError(f"cannot create out_dir {os.fspath(out_dir)!r}: {_why(exc)}") from exc
     partial = Path(f"{target}.partial")
     try:
