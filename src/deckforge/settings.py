@@ -400,7 +400,11 @@ def _reports(steam_root: str, appids: list[int] | None) -> list[dict[str, Any]]:
         missing = [str(appid) for appid in appids if appid not in installed]
         if missing:
             raise SettingsError(f"appid not installed: {', '.join(missing)}")
+        tools = [str(c["appid"]) for c in cards if c["appid"] in appids and c["kind"] != "game"]
+        if tools:
+            raise SettingsError(f"appid is a tool, not a game: {', '.join(tools)}")
         cards = [card for card in cards if card["appid"] in appids]
+    cards = [card for card in cards if card["kind"] == "game"]
     cards.sort(key=lambda card: card["appid"])
     return [read_settings(card, maps) for card in cards]
 
