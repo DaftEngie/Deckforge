@@ -18,11 +18,15 @@ issue {"code", "path", "message"}; messages never quote file contents.
   warnings       library_entry_invalid, library_path_invalid, library_unavailable,
                  common_unreadable, config_vdf_missing, duplicate_appid
   card warnings  name_missing, stateflags_invalid, install_folder_missing,
-                 prefix_in_other_library, prefix_unreadable
+                 prefix_in_other_library, prefix_unreadable, and from deckforge.detect
+                 (B2: engine, anti-cheat, upscalers, injectors, settings files, Tier I)
+                 scan_truncated, unreadable, not_entered, non_utf8_filename,
+                 injector_with_anticheat
 A folder that is not found, or has a path part that is not a folder, is absent. Any other
-error while checking a folder is never silent (spec B4, R12): for steamapps, common and a
-game's own prefix it is an issue; for an install folder, shader cache or root-library
-prefix it is logged at WARNING on logger "deckforge.discover", with the path.
+error while checking a folder is never silent (spec B4, R12): for steamapps, common and
+either prefix (the game's own, or the root library's fallback) it is an issue; for an
+install folder or shader cache it is logged at WARNING on logger "deckforge.discover",
+with the path.
 
 CLI: python -m deckforge.discover --steam-root PATH  (JSON on stdout; exit 2 on DiscoverError)
 """
@@ -40,7 +44,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from deckforge import vdf
+from deckforge import detect, vdf
 
 DISCOVER_VERSION = 1
 _MIB = 1024 * 1024
@@ -282,12 +286,18 @@ def _card(
         message = "install folder not found"
         warnings.append(_issue("install_folder_missing", str(install_path), message))
     prefix_path = _prefix_path(appid, library, root, warnings)
+    kind = "tool" if _is_tool(name) else "game"
+    walked = str(install_path) if has_folder else None
+    detected, found = detect.card_fields(
+        appid, kind=kind, state_flags=state_flags, install_path=walked, prefix_path=prefix_path
+    )
+    warnings += [_issue(code, path, message) for code, path, message in found]
     buildid = vdf.find(app, "buildid")
     shadercache = Path(library, "steamapps", "shadercache", str(appid))
     return {
         "appid": appid,
         "name": name,
-        "kind": "tool" if _is_tool(name) else "game",
+        "kind": kind,
         "library": library,
         "installdir": manifest.installdir,
         "buildid": buildid if isinstance(buildid, str) else None,
@@ -299,6 +309,7 @@ def _card(
         "prefix_path": prefix_path,
         "shadercache_path": str(shadercache) if _is_folder(shadercache) else None,
         "compat_tool": _compat_tool(config, appid),
+        **detected,
         "warnings": _sort_issues(warnings),
     }
 
@@ -311,22 +322,23 @@ def _is_tool(name: str | None) -> bool:
 def _prefix_path(appid: int, library: str, root: str, warnings: list[_Issue]) -> str | None:
     """The game's own Proton prefix; if absent, the root library's (with a warning); else None.
 
-    If the own prefix cannot be checked, None and a prefix_unreadable warning, never the
-    root library's: later phases write into prefixes, so a guess is not allowed.
+    If either check fails with an error other than "absent", None and a prefix_unreadable
+    warning for that path: later phases write into prefixes, so a guess is not allowed.
     """
     own = Path(library, "steamapps", "compatdata", str(appid), "pfx")
-    try:
-        if _folder_exists(own):
-            return str(own)
-    except OSError as exc:
-        message = f"cannot check the Proton prefix ({_why(exc)}); no fallback is used"
-        warnings.append(_issue("prefix_unreadable", str(own), message))
-        return None
     in_root = Path(root, "steamapps", "compatdata", str(appid), "pfx")
-    if library != root and _is_folder(in_root):
-        message = "the Proton prefix is in the root library"
-        warnings.append(_issue("prefix_in_other_library", str(in_root), message))
-        return str(in_root)
+    for path in [own] if library == root else [own, in_root]:
+        try:
+            if not _folder_exists(path):
+                continue
+        except OSError as exc:
+            message = f"cannot check the Proton prefix ({_why(exc)}); no prefix is used"
+            warnings.append(_issue("prefix_unreadable", str(path), message))
+            return None
+        if path != own:
+            message = "the Proton prefix is in the root library"
+            warnings.append(_issue("prefix_in_other_library", str(in_root), message))
+        return str(path)
     return None
 
 
