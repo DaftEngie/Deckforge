@@ -193,3 +193,97 @@ This waits for `tune`, which is the first caller of `apply`.
 3. The tool prints matching SHA-256 values.
 
 ## Clarifier questions and answers (filled before tests are written)
+Clarifier review, 2026-10-22. These answers are binding and override the ACs where they
+differ. All of them take the conservative option.
+
+1. **Only kind `ini` may be written.** Unity `boot.config` (kind `boot_config`) is
+   refused (`kind_not_writable`) until Fede approves it.
+2. **`Engine.ini` needs proof of no anti-cheat.** It requires the card's
+   `tier_i_eligible is True`, not merely an empty `anticheat` list. Otherwise it is
+   refused with `engine_ini_anticheat`.
+3. **Path checks.** The target must equal a card entry's `path` exactly, as a string.
+   - The last part must be a regular file and not a link (`symlink`).
+   - `realpath(target)` must lie inside `realpath(install_path)` or
+     `realpath(prefix_path)` (`outside_game`). Links in parent folders are allowed.
+   - `apply` re-checks all of this on disk.
+4. **Changed since preview.** `Change` gains `old_sha256`, set by `plan` from the file at
+   that moment. `apply` refuses (`changed_since_preview`) if the file no longer matches.
+   Interface: `plan(card, target_path, new_bytes)` returns
+   `Change(appid, path, old_sha256, new_bytes)`.
+5. **Crash safety.**
+   - The backup is built in `<backup_root>/.tmp-<id>/`: copies first, each one fsynced,
+     then `manifest.json` written last and fsynced.
+   - The folder is renamed to `<backup_root>/<id>/`, and the parent folder fsynced.
+   - All of this finishes before the first target write.
+   - **Restore decides per file:**
+     - current matches `sha256_before`: skip, and list it as `skipped`;
+     - current matches `sha256_after`: restore;
+     - otherwise: `changed_since_apply` (AC12).
+   - `list` shows `.tmp-*` folders and folders without a manifest as `incomplete`, and
+     never deletes them.
+6. **Duplicate targets.**
+   - Two Changes that resolve to the same file (same `st_dev` and `st_ino`) → refused
+     (`duplicate_target`).
+   - A target with a link count above 1 → refused (`hard_link`).
+7. **Rollback** after a later file fails rewrites only files whose current hash equals
+   our `sha256_after`. Any other file is reported in the error, never overwritten.
+8. **Read-only files (Q6), restated.** With temp-file-plus-rename, the target's own mode
+   never blocks the write.
+   - Q6 therefore means "ask first": a target without owner-write is refused
+     (`file_locked`) unless `"locked"` is in `confirm`.
+   - The temp file gets the target's original mode (`chmod` on the temp file) before
+     the rename, so the lock stays exactly as it was.
+   - Refused: targets not owned by the current user (`not_owner`), and folders the user
+     can't write to (`folder_locked`).
+   - Folder permissions are never changed.
+9. **Immutable or otherwise unwritable.** If `os.replace` fails with `EPERM` or
+   `EACCES`, the result is `file_locked`, with the temp file cleaned up. A test fakes
+   this error. There is no attempt to read the immutable attribute.
+10. **Size and text.**
+    - Targets and new contents are limited to 1 MiB each (`too_large`).
+    - The diff decodes using the BOM (UTF-8 or UTF-16), otherwise strict UTF-8.
+    - If decoding fails, the diff is `null` and the warning `not_text` is added.
+11. **`backup_id`** is `<YYYYmmdd-HHMMSS>-<appid>-<8 hex from secrets.token_hex(4)>`.
+    It is created with `os.mkdir`; if the id exists, a new one is drawn. A folder is
+    never reused.
+12. **Clock.** `created_utc` is informational only. `list` sorts by `backup_id` and
+    labels the time as "Deck clock".
+13. **Lock.** The lock is `fcntl.flock(LOCK_EX | LOCK_NB)` on `<backup_root>/.lock`,
+    held from the first check to the last write. If the lock is held → `busy`. A lock
+    left by a dead process is free automatically; there is no PID logic.
+14. **Free space.** Before writing anything, `os.statvfs` must show enough room:
+    - on the backup filesystem, the sum of the original sizes;
+    - on each target's filesystem, its new size.
+
+    Otherwise the result is `no_space`. Tests fake `statvfs`. AC8 still covers running
+    out of space later.
+15. **SD card missing.** If the target's folder (or the library root) is missing at
+    apply or restore → `target_unavailable: insert the SD card or check the library`.
+    Restore never creates folders.
+16. **Game-running check (AC9), restated.**
+    - Scan `proc_root/<pid>/environ` for `SteamAppId=<appid>` or
+      `STEAM_COMPAT_APP_ID=<appid>`.
+    - Processes owned by other users and unreadable are skipped.
+    - An unreadable process owned by the current user → `cannot_check_running`.
+    - The `exe` link is an extra signal only.
+    - The check runs while holding the lock, and again just before each rename.
+    - The docs say plainly that games started outside Steam are not detected.
+17. **Steam Cloud, restated.**
+    - `userdata_roots` is required: an empty sequence → `SafetyError("no_userdata")`.
+    - Every account folder is checked.
+    - If the target's base name appears as the last path part of any key in
+      `remotecache.vdf`, that is a match.
+    - Either `cloud_synced` or `cloud_unknown` (unreadable or unparsable file) requires
+      `"cloud"` in `confirm`; the default is to ask.
+    - A missing `remotecache.vdf` means "not synced".
+    - The text tells Fede that Cloud may push the old file back.
+18. **Backup root.** It must be absolute, existing and a folder, and it must not be
+    inside any Steam library or Proton prefix the card names (`bad_backup_root`). The
+    default is `Path.home()/deckforge/backups`, created with `mkdir(parents=True,
+    exist_ok=True)` only under the home folder.
+19. **Restore result:** `{"backup_id", "restored": [paths], "skipped": [paths],
+    "new_backup_id": str | None}`. With `"overwrite"`, the current versions are first
+    saved as a new backup, whose id is returned.
+20. **Steam updates.** When restore finds a file changed since apply, the message says:
+    "changed since DeckForge applied it (you, the game, or a Steam update/verify may have
+    changed it)".
