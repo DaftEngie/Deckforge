@@ -1,0 +1,114 @@
+{
+  "id": "re-appoption-section",
+  "engine": "re_engine",
+  "label": "RE Engine config.ini, [AppOption] format (Dragon's Dogma 2)",
+  "match": {
+    "file_name": "config.ini",
+    "sections": [
+      "AppOption"
+    ],
+    "keys": [
+      [
+        "AppOption",
+        "UpscalingAlgorithm"
+      ]
+    ]
+  },
+  "knobs": [
+    {
+      "id": "upscaler",
+      "label": "Upscaler",
+      "section": "AppOption",
+      "key": "UpscalingAlgorithm",
+      "type": "enum",
+      "values": [
+        "FSR3"
+      ],
+      "confidence": "likely",
+      "source": "key names only, no menu evidence; Fede's DD2 config.ini 2026-10-21"
+    },
+    {
+      "id": "upscaling_quality",
+      "label": "Upscaling quality",
+      "section": "AppOption",
+      "key": "UpscalingQuality",
+      "type": "enum",
+      "values": [
+        "Balanced"
+      ],
+      "confidence": "likely",
+      "source": "key names only, no menu evidence; Fede's DD2 config.ini 2026-10-21"
+    },
+    {
+      "id": "upscaling_sharpness",
+      "label": "Upscaling sharpness",
+      "section": "AppOption",
+      "key": "UpscalingSharpness",
+      "type": "number",
+      "confidence": "likely",
+      "source": "key names only, no menu evidence; Fede's DD2 config.ini 2026-10-21"
+    },
+    {
+      "id": "frame_generation",
+      "label": "Frame generation",
+      "section": "AppOption",
+      "key": "FSR3_FrameGeneraion",
+      "type": "bool",
+      "values": [
+        "OFF",
+        "ON"
+      ],
+      "confidence": "likely",
+      "source": "key names only, no menu evidence; Fede's DD2 config.ini 2026-10-21"
+    },
+    {
+      "id": "texture_quality",
+      "label": "Texture quality",
+      "section": "AppOption",
+      "key": "TextureQuality",
+      "type": "enum",
+      "values": [
+        "High"
+      ],
+      "confidence": "likely",
+      "source": "key names only, no menu evidence; Fede's DD2 config.ini 2026-10-21"
+    },
+    {
+      "id": "shadow_quality",
+      "label": "Shadow quality",
+      "section": "AppOption",
+      "key": "ShadowQuality",
+      "type": "enum",
+      "values": [
+        "Low"
+      ],
+      "confidence": "likely",
+      "source": "key names only, no menu evidence; Fede's DD2 config.ini 2026-10-21"
+    },
+    {
+      "id": "frame_rate",
+      "label": "Frame rate cap",
+      "section": "AppOption",
+      "key": "FrameRate",
+      "type": "enum",
+      "values": [
+        "Max60"
+      ],
+      "confidence": "likely",
+      "source": "key names only, no menu evidence; Fede's DD2 config.ini 2026-10-21"
+    },
+    {
+      "id": "vsync",
+      "label": "VSync",
+      "section": "AppOption",
+      "key": "VSync",
+      "type": "bool",
+      "values": [
+        "OFF",
+        "ON"
+      ],
+      "confidence": "likely",
+      "source": "key names only, no menu evidence; Fede's DD2 config.ini 2026-10-21"
+    }
+  ]
+}

@@ -1,0 +1,387 @@
+{
+  "id": "re-graphics-section",
+  "engine": "re_engine",
+  "label": "RE Engine config.ini, [Graphics] format (Monster Hunter Wilds)",
+  "match": {
+    "file_name": "config.ini",
+    "sections": [
+      "Graphics"
+    ],
+    "keys": [
+      [
+        "Graphics",
+        "ShaderConvertVersion"
+      ]
+    ]
+  },
+  "knobs": [
+    {
+      "id": "upscaler",
+      "label": "Upscaling",
+      "section": "Graphics",
+      "key": "Algorithm",
+      "type": "enum",
+      "values": [
+        "FSR3"
+      ],
+      "confidence": "matched",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 6"
+    },
+    {
+      "id": "frame_generation",
+      "label": "Frame Generation",
+      "section": "Graphics",
+      "key": "AlgorithmFG",
+      "type": "enum",
+      "values": [
+        "NONE",
+        "FSR3"
+      ],
+      "confidence": "matched",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 7"
+    },
+    {
+      "id": "upscaling_mode",
+      "label": "Upscaling Mode",
+      "section": "Graphics",
+      "key": "Quality",
+      "type": "enum",
+      "values": [
+        "Balanced"
+      ],
+      "confidence": "matched",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 71"
+    },
+    {
+      "id": "upscaling_sharpness",
+      "label": "Upscaling Sharpness",
+      "section": "Graphics/FSR3",
+      "key": "Sharpness",
+      "type": "number",
+      "confidence": "matched",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 136"
+    },
+    {
+      "id": "anti_aliasing",
+      "label": "Anti-Aliasing",
+      "section": "Graphics",
+      "key": "AntiAliasing",
+      "type": "enum",
+      "values": [
+        "NONE"
+      ],
+      "confidence": "likely",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 9"
+    },
+    {
+      "id": "render_scaling",
+      "label": "Render Scaling",
+      "section": "Graphics",
+      "key": "ImageQualityRate",
+      "type": "enum",
+      "values": [
+        "1"
+      ],
+      "confidence": "likely",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 51"
+    },
+    {
+      "id": "ray_tracing",
+      "label": "Ray Tracing",
+      "section": "Graphics/RayTracing",
+      "key": "Enable",
+      "type": "bool",
+      "values": [
+        "False",
+        "True"
+      ],
+      "confidence": "likely",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 139"
+    },
+    {
+      "id": "texture_quality",
+      "label": "Texture Quality",
+      "section": "Graphics",
+      "key": "StreamingTextureQuality",
+      "type": "enum",
+      "values": [
+        "HIGH"
+      ],
+      "confidence": "likely",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 100"
+    },
+    {
+      "id": "texture_filtering",
+      "label": "Texture Filtering Quality",
+      "section": "Graphics",
+      "key": "SamplerQuality",
+      "type": "enum",
+      "values": [
+        "Bilinear"
+      ],
+      "confidence": "matched",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 78"
+    },
+    {
+      "id": "fur_quality",
+      "label": "Fur Quality (low shell fur)",
+      "section": "Graphics",
+      "key": "UseLowShellFur",
+      "type": "bool",
+      "values": [
+        "False",
+        "True"
+      ],
+      "confidence": "likely",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 105"
+    },
+    {
+      "id": "grass_sway_branch",
+      "label": "Grass/Tree Sway (branch)",
+      "section": "Graphics",
+      "key": "SpeedTreeWind_Branch",
+      "type": "enum",
+      "values": [
+        "0"
+      ],
+      "confidence": "likely",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 91"
+    },
+    {
+      "id": "grass_sway_global",
+      "label": "Grass/Tree Sway (global)",
+      "section": "Graphics",
+      "key": "SpeedTreeWind_Global",
+      "type": "enum",
+      "values": [
+        "0"
+      ],
+      "confidence": "likely",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 92"
+    },
+    {
+      "id": "grass_sway_leaf",
+      "label": "Grass/Tree Sway (leaf)",
+      "section": "Graphics",
+      "key": "SpeedTreeWind_Leaf",
+      "type": "enum",
+      "values": [
+        "0"
+      ],
+      "confidence": "likely",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 93"
+    },
+    {
+      "id": "foliage_collision",
+      "label": "Foliage and Snow Collision",
+      "section": "Graphics",
+      "key": "GrassPushCollision",
+      "type": "bool",
+      "values": [
+        "False",
+        "True"
+      ],
+      "confidence": "likely",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 43"
+    },
+    {
+      "id": "wind_simulation",
+      "label": "Wind Simulation Quality",
+      "section": "Graphics",
+      "key": "WindSimulationQuality",
+      "type": "enum",
+      "values": [
+        "OFF"
+      ],
+      "confidence": "matched",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 115"
+    },
+    {
+      "id": "surface_quality",
+      "label": "Surface Quality",
+      "section": "Graphics",
+      "key": "GroundQuality",
+      "type": "enum",
+      "values": [
+        "HIGH"
+      ],
+      "confidence": "likely",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 44"
+    },
+    {
+      "id": "water_effects",
+      "label": "Water Effects (low water simulation)",
+      "section": "Graphics",
+      "key": "UseLowWaterSimulation",
+      "type": "bool",
+      "values": [
+        "False",
+        "True"
+      ],
+      "confidence": "likely",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 106"
+    },
+    {
+      "id": "shadow_quality",
+      "label": "Shadow Quality",
+      "section": "Graphics",
+      "key": "ShadowQuality",
+      "type": "enum",
+      "values": [
+        "LOWEST"
+      ],
+      "confidence": "matched",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 85"
+    },
+    {
+      "id": "shadow_distance",
+      "label": "Shadow Distance",
+      "section": "Graphics",
+      "key": "ShadowCastDistanceType",
+      "type": "enum",
+      "values": [
+        "MIDDLE"
+      ],
+      "confidence": "likely",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 81"
+    },
+    {
+      "id": "ambient_light",
+      "label": "Ambient Light Quality",
+      "section": "Graphics",
+      "key": "GIQuality",
+      "type": "enum",
+      "values": [
+        "LOW"
+      ],
+      "confidence": "likely",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 37"
+    },
+    {
+      "id": "contact_shadows",
+      "label": "Contact Shadows",
+      "section": "Graphics",
+      "key": "ContactShadowSetting",
+      "type": "enum",
+      "values": [
+        "OFF"
+      ],
+      "confidence": "matched",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 20"
+    },
+    {
+      "id": "bloom_enable",
+      "label": "Bloom (enable)",
+      "section": "Graphics",
+      "key": "Bloom_Enable",
+      "type": "bool",
+      "values": [
+        "False",
+        "True"
+      ],
+      "confidence": "likely",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 12"
+    },
+    {
+      "id": "bloom_level",
+      "label": "Bloom (level)",
+      "section": "Graphics",
+      "key": "Bloom_ReductionLevel",
+      "type": "enum",
+      "values": [
+        "2"
+      ],
+      "confidence": "likely",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 13"
+    },
+    {
+      "id": "motion_blur",
+      "label": "Motion Blur",
+      "section": "Graphics",
+      "key": "MotionBlur_Enable",
+      "type": "bool",
+      "values": [
+        "False",
+        "True"
+      ],
+      "confidence": "matched",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 63"
+    },
+    {
+      "id": "screen_space_reflection",
+      "label": "Screen Space Reflection",
+      "section": "Graphics",
+      "key": "SSR_Enable",
+      "type": "bool",
+      "values": [
+        "False",
+        "True"
+      ],
+      "confidence": "matched",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 76"
+    },
+    {
+      "id": "ssss_scattering",
+      "label": "SSSS Scattering",
+      "section": "Graphics",
+      "key": "SSSSS_Enable",
+      "type": "bool",
+      "values": [
+        "False",
+        "True"
+      ],
+      "confidence": "matched",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 77"
+    },
+    {
+      "id": "depth_of_field",
+      "label": "Depth of Field",
+      "section": "Graphics",
+      "key": "DOF_Enable",
+      "type": "bool",
+      "values": [
+        "False",
+        "True"
+      ],
+      "confidence": "matched",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 21"
+    },
+    {
+      "id": "volumetric_fog_enable",
+      "label": "Volumetric Fog (enable)",
+      "section": "Graphics",
+      "key": "VolumetricFogControl_Enable",
+      "type": "bool",
+      "values": [
+        "False",
+        "True"
+      ],
+      "confidence": "likely",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 111"
+    },
+    {
+      "id": "volumetric_fog_size",
+      "label": "Volumetric Fog (texture size)",
+      "section": "Graphics",
+      "key": "VolumetricFogControl_TextureSize",
+      "type": "enum",
+      "values": [
+        "W54xH30xD32"
+      ],
+      "confidence": "likely",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 113"
+    },
+    {
+      "id": "variable_rate_shading",
+      "label": "Variable Rate Shading",
+      "section": "Graphics",
+      "key": "VRSSetting",
+      "type": "enum",
+      "values": [
+        "Off"
+      ],
+      "confidence": "matched",
+      "source": "docs/research/wilds-settings-map.md: menu photos vs Fede's config.ini 2026-10-21, line 108"
+    }
+  ]
+}
