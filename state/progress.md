@@ -50,3 +50,14 @@
 - Decided (spec silent): a record without gid (made before A23) is accepted and its
   group is left as the temp file gets it.
 - 1866 tests pass locally (as root), ruff clean, tamper check OK.
+
+## 2026-10-23 — safety spec item 24 (double Ctrl-C, final-step Ctrl-C, gid range)
+- A Ctrl-C during rollback is a failed rollback for that file (not retried): apply raises
+  rollback_failed naming the backup folder, the files that still hold the new content,
+  and that the old (original) content is in that folder. A file found back to its
+  original after the interrupt (e.g. Ctrl-C at the folder fsync) counts as rolled back.
+- The lock is released explicitly (flock LOCK_UN, then os.close); a Ctrl-C there is logged
+  as a warning and not re-raised, so apply/restore/CLI restore return their result.
+- A manifest gid must be an int (not bool) with 0 <= gid < 2**32 - 1, else backup_corrupt
+  before any write. A record without gid (pre-A23) is still accepted, as decided in A23.
+- 1903 tests pass locally (as root), ruff clean, tamper check OK.

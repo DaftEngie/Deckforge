@@ -1,7 +1,7 @@
 """deckforge.safety: preview, backup, atomic apply and verified restore of game settings files.
 
 Spec: docs/specs/safety-module.md (AC1-AC15 and the binding clarifier answers, cited here as
-A1-A23). Every later write DeckForge makes to a user's Deck goes through this module (R10).
+A1-A24). Every later write DeckForge makes to a user's Deck goes through this module (R10).
 
 Rules this module keeps:
 - Only a non-registry `ini` entry of the card's `settings_files` is ever written (Q1, A1-A3).
@@ -513,7 +513,20 @@ def _locked(backup_root: Path) -> Iterator[None]:
             raise SafetyError("busy", "another DeckForge apply or restore is running") from exc
         yield
     finally:
-        os.close(fd)
+        _release(fd, lock)
+
+
+def _release(fd: int, lock: Path) -> None:
+    """Unlock (flock LOCK_UN) and close the lock file, explicitly, not left to the garbage
+    collector. A24: Ctrl-C here is the final step, after the operation already succeeded
+    (or already failed with its own error): it is logged and not re-raised."""
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+    except KeyboardInterrupt:
+        _log.warning("Ctrl-C while releasing the lock %s; the operation had already ended", lock)
 
 
 def _backup_root(backup_root: object, avoid: Iterable[str | None] = ()) -> Path:
@@ -882,15 +895,17 @@ def _roll_back(
     changes: Sequence[Change], found: Sequence[_OnDisk], roots: Sequence[str], running: Any
 ) -> tuple[list[str], list[str], list[str]]:
     """A7: put back the original only where the file still holds exactly our new bytes.
-    Returns (rolled back, left alone because someone else changed it, rollback failed)."""
+    Returns (rolled back, left alone because someone else changed it, rollback failed).
+    A24: a second Ctrl-C while rolling a file back is a failed rollback of that file (not
+    retried); the remaining files are still rolled back."""
     restored: list[str] = []
     kept: list[str] = []
     failed: list[str] = []
     for change, original in zip(changes, found, strict=True):
         try:
             now = _inspect(change.path, roots)
-        except SafetyError as exc:
-            failed.append(f"{change.path} ({exc})")
+        except (SafetyError, KeyboardInterrupt) as exc:
+            failed.append(f"{change.path} (its content could not be checked: {_reason(exc)})")
             continue
         if now.sha256 == original.sha256:
             continue
@@ -903,11 +918,19 @@ def _roll_back(
             _replace_file(
                 change.path, original.data, original.mode, recheck, gid=gid, rollback=True
             )
-        except (OSError, SafetyError) as exc:
-            failed.append(f"{change.path} ({exc})")
+        except (OSError, SafetyError, KeyboardInterrupt) as exc:
+            if _sha_now(change.path) == original.sha256:
+                restored.append(change.path)  # renamed back before the failure (folder fsync)
+            else:
+                failed.append(f"{change.path} (still holds the new content: {_reason(exc)})")
         else:
             restored.append(change.path)
     return restored, kept, failed
+
+
+def _reason(exc: BaseException) -> str:
+    """An error's text, or its type name when it has none (a real Ctrl-C has no text)."""
+    return str(exc) or type(exc).__name__
 
 
 def _apply_error(
@@ -932,7 +955,7 @@ def _apply_error(
     if failed:
         code = "rollback_failed"
         parts.append(f"ROLLBACK FAILED for: {', '.join(failed)}")
-    parts.append(f"the originals are kept in {folder}")
+    parts.append(f"the old (original) content of every file is kept in {folder}")
     message = "; ".join(parts)
     if failed:
         _log.error("apply failed and could not be rolled back: %s", message)
@@ -1180,7 +1203,7 @@ def _record_problem(record: object) -> str | None:
     if type(mode) is not int or not 0 <= mode <= 0o7777:
         return f"bad mode for {record['path']}"
     gid = record.get("gid")  # A23; a record made before A23 has none
-    if gid is not None and (type(gid) is not int or gid < 0):
+    if gid is not None and not (type(gid) is int and 0 <= gid < 2**32 - 1):  # A24 range
         return f"bad gid for {record['path']}"
     for key in ("sha256_before", "sha256_after"):
         if not isinstance(record.get(key), str) or not _SHA256.fullmatch(record[key]):
