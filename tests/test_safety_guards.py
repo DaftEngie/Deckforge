@@ -435,17 +435,57 @@ def test_a14_a_full_target_disk_is_no_space_before_any_write(tmp_path, monkeypat
     _assert_untouched(deck, before)
 
 
-def test_a14_backup_room_one_byte_short_of_the_originals_is_no_space(tmp_path, monkeypatch):
+# A14 backup-room fixtures: new contents whose total size differs from the originals'
+# total (CONFIG_NEW + GUS_NEW happen to sum to the same 126 bytes as the originals, which
+# cannot tell "sum of originals" from "sum of new sizes"). "shorter" catches an apply that
+# sizes the backup by the new bytes and so accepts one byte short of the originals;
+# "longer" catches the same mistake in the exact-room case, where it would refuse.
+A14_NEW = {
+    "shorter": (
+        b"[Render]\r\nUpscaler=XeSS\r\n",
+        b"[/Script/Engine.GameUserSettings]\nResolutionSizeX=960\n",
+    ),
+    "longer": (
+        CONFIG_NEW + b"Textures=Medium\r\nAmbientOcclusion=Off\r\n",
+        GUS_NEW + b"FrameRateLimit=35.000000\nbUseVSync=False\n",
+    ),
+}
+
+
+def _a14_changes(deck, config_new, gus_new):
+    """The two changes of _changes, with new bytes of a different total length."""
+    needed = len(CONFIG_INI) + len(GUS_INI)
+    assert needed != len(config_new) + len(gus_new)
+    return needed, [
+        safety.plan(deck.card, str(deck.config), config_new),
+        safety.plan(deck.card, str(deck.gus), gus_new),
+    ]
+
+
+@pytest.mark.parametrize("sizes", sorted(A14_NEW))
+def test_a14_backup_room_one_byte_short_of_the_originals_is_no_space(tmp_path, monkeypatch, sizes):
     # A14: the backup filesystem needs the sum of the ORIGINAL sizes (not the new ones).
     deck = make_deck(tmp_path)
-    changes = _changes(deck)
-    needed = len(CONFIG_INI) + len(GUS_INI)
-    assert needed != len(CONFIG_NEW) + len(GUS_NEW)
+    needed, changes = _a14_changes(deck, *A14_NEW[sizes])
     before = deck_state(deck)
     low_disk(monkeypatch, {deck.backup_root: needed - 1})
     refusal("no_space", safety.apply, changes, **deck.kw())
     monkeypatch.undo()
     _assert_untouched(deck, before)
+
+
+@pytest.mark.parametrize("sizes", sorted(A14_NEW))
+def test_a14_backup_room_exactly_the_originals_is_enough(tmp_path, monkeypatch, sizes):
+    # A14: exactly the sum of the ORIGINAL sizes free on the backup filesystem is accepted.
+    deck = make_deck(tmp_path)
+    config_new, gus_new = A14_NEW[sizes]
+    needed, changes = _a14_changes(deck, config_new, gus_new)
+    low_disk(monkeypatch, {deck.backup_root: needed})
+    backup_id = safety.apply(changes, **deck.kw())
+    monkeypatch.undo()
+    assert deck.config.read_bytes() == config_new
+    assert deck.gus.read_bytes() == gus_new
+    assert backup_folders(deck) == [backup_id]
 
 
 def test_a14_target_room_one_byte_short_of_the_new_size_is_no_space(tmp_path, monkeypatch):
