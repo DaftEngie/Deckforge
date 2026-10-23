@@ -287,3 +287,21 @@ differ. All of them take the conservative option.
 20. **Steam updates.** When restore finds a file changed since apply, the message says:
     "changed since DeckForge applied it (you, the game, or a Steam update/verify may have
     changed it)".
+21. **Confirmed after the tests were written, 2026-10-22.** The test author's
+    assumptions are adopted as spec:
+    - `preview(changes, *, userdata_roots)` takes `userdata_roots` so that it can warn
+      about cloud sync.
+    - An unreadable cloud file in `apply` without `"cloud"` → `cloud_unknown`.
+    - Every refusal in `apply` happens before any backup folder is created.
+    - A changed file (`changed_since_apply`) without `"overwrite"` stops the whole restore,
+      so nothing is restored. The message names the file and includes the answer-20
+      sentence.
+    - A settings file deleted after apply: restore → `file_missing`, with or without
+      `"overwrite"`. It is never recreated.
+    - CLI flags come after the command. After an overwrite, the CLI prints the new
+      `backup_id`.
+    - The CLI's `restore` reads the real `/proc`, read-only.
+    - **Known limit:** edits to a manifest's `mode` or `path` fields can't be detected,
+      because the manifest has no checksum of its own. Restore still re-checks Q1 path
+      rules on disk (answer 3) before writing, so an edited path can't point outside the
+      game's folders.
