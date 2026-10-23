@@ -829,3 +829,374 @@ def _apply_error(
     if failed:
         _log.error("apply failed and could not be rolled back: %s", message)
     return SafetyError(code, message)
+
+
+# ---------------------------------------------------------------------------- restore
+
+
+def restore(
+    backup_id: str,
+    *,
+    backup_root: str,
+    confirm: Iterable[str] = frozenset(),
+    proc_root: str = "/proc",
+) -> dict[str, Any]:
+    """Put every file of a backup back byte for byte with its mode (AC5, AC10, AC12, AC14,
+    A5, A15, A19-A21). Verifies the whole backup first; never deletes or creates a file.
+
+    Returns {"backup_id", "restored", "skipped", "new_backup_id"}.
+    """
+    words = _check_confirm(confirm, RESTORE_CONFIRMS)
+    root = _backup_root(backup_root)
+    folder = _backup_folder(root, backup_id)
+    with _locked(root):
+        manifest, copies = _verified(folder, backup_id)
+        game = _game_fields(manifest)
+        _backup_root(root, game.values())
+        roots = _game_roots(manifest)
+        appid = manifest["appid"]
+
+        def running() -> None:
+            _check_running(appid, manifest.get("install_path"), proc_root)
+
+        running()
+        records = manifest["files"]
+        found = [_inspect(record["path"], roots) for record in records]
+        for item in found:
+            _check_writable(item, words, ask_locked=False)
+        skipped, to_restore, changed = _decide(records, found)
+        if changed and "overwrite" not in words:
+            raise _changed_error(records, found, copies, changed)
+        writes = [index for index in range(len(records)) if index in to_restore + changed]
+        for index in writes:
+            _check_space(Path(records[index]["path"]).parent, len(copies[index]))
+        new_backup_id = None
+        if changed:
+            _check_space(root, sum(len(found[index].data) for index in writes))
+            items = [
+                _Item(found[i].path, found[i].data, found[i].mode, records[i]["sha256_before"])
+                for i in writes
+            ]
+            new_backup_id = _new_backup(root, appid, game, items)
+        restored = _restore_files(records, copies, found, writes, roots, running, folder)
+    return {
+        "backup_id": backup_id,
+        "restored": restored,
+        "skipped": [records[index]["path"] for index in skipped],
+        "new_backup_id": new_backup_id,
+    }
+
+
+def _backup_folder(root: Path, backup_id: object) -> Path:
+    """<root>/<backup_id> for an id of the A11 form naming a real folder (not a link)."""
+    if not isinstance(backup_id, str) or not _ID.fullmatch(backup_id):
+        raise SafetyError("unknown_backup", f"not a backup id: {backup_id!r}")
+    folder = root / backup_id
+    try:
+        info = folder.lstat()
+    except OSError as exc:
+        raise SafetyError("unknown_backup", f"no backup {backup_id} in {root}") from exc
+    if not stat.S_ISDIR(info.st_mode):
+        raise SafetyError("unknown_backup", f"{folder} is not a backup folder")
+    return folder
+
+
+def _decide(
+    records: Sequence[dict[str, Any]], found: Sequence[_OnDisk]
+) -> tuple[list[int], list[int], list[int]]:
+    """A5: per file by the current SHA-256: == sha256_before -> skipped (checked first);
+    == sha256_after -> restore; otherwise changed since apply (AC12)."""
+    skipped: list[int] = []
+    to_restore: list[int] = []
+    changed: list[int] = []
+    for index, (record, item) in enumerate(zip(records, found, strict=True)):
+        if item.sha256 == record["sha256_before"]:
+            skipped.append(index)
+        elif item.sha256 == record["sha256_after"]:
+            to_restore.append(index)
+        else:
+            changed.append(index)
+    return skipped, to_restore, changed
+
+
+def _changed_error(
+    records: Sequence[dict[str, Any]],
+    found: Sequence[_OnDisk],
+    copies: Sequence[bytes],
+    changed: list[int],
+) -> SafetyError:
+    """AC12/A20/A21: names each changed file, with the A20 sentence; `details` hold the
+    difference between the file now and what restore would write back."""
+    paths = [records[index]["path"] for index in changed]
+    diffs = []
+    for index in changed:
+        item = found[index]
+        diff = _diff(item.data, copies[index], item.path, (" (now)", " (restore would write)"))
+        diffs.append(diff or f"{item.path}: not text; its SHA-256 now is {item.sha256}\n")
+    message = (
+        f"{', '.join(paths)} {CHANGED_TEXT}; nothing was restored; confirm overwrite to save "
+        "the current version as a new backup and restore anyway"
+    )
+    return SafetyError("changed_since_apply", message, details="".join(diffs))
+
+
+def _restore_files(
+    records: Sequence[dict[str, Any]],
+    copies: Sequence[bytes],
+    found: Sequence[_OnDisk],
+    writes: Sequence[int],
+    roots: Sequence[str],
+    running: Any,
+    folder: Path,
+) -> list[str]:
+    """AC3 per file. An error stops restore; every file stays whole, and running restore
+    again finishes the job (files already back are skipped)."""
+    restored: list[str] = []
+    for index in writes:
+        path = records[index]["path"]
+        recheck = _rechecker(found[index], roots, running, "changed_since_apply")
+        try:
+            _replace_file(path, copies[index], records[index]["mode"], recheck)
+        except (OSError, SafetyError) as exc:
+            code = exc.code if isinstance(exc, SafetyError) else "restore_failed"
+            done = ", ".join(restored) or "none"
+            message = (
+                f"restoring {path} failed ({exc}); already restored: {done}; every file is "
+                f"whole; the backup {folder} is kept; run restore again to finish"
+            )
+            raise SafetyError(code, message) from exc
+        restored.append(path)
+    return restored
+
+
+# ---------------------------------------------------------------------------- manifest checks
+
+
+def _verified(folder: Path, backup_id: str) -> tuple[dict[str, Any], list[bytes]]:
+    """AC5: the manifest exists, parses and is well formed, and every copy matches its size
+    and sha256_before. Returns the manifest and the copies' bytes; else backup_corrupt."""
+    manifest = _load_manifest(folder, backup_id)
+    copies = []
+    for record in manifest["files"]:
+        path = folder / record["copy"]
+        try:
+            data = _read_bytes(str(path), MAX_FILE)
+        except (OSError, SafetyError) as exc:
+            raise SafetyError("backup_corrupt", f"backup copy {path} is unreadable") from exc
+        if len(data) != record["size"] or _sha(data) != record["sha256_before"]:
+            raise SafetyError("backup_corrupt", f"backup copy {path} does not match the manifest")
+        copies.append(data)
+    return manifest, copies
+
+
+def _load_manifest(folder: Path, backup_id: str) -> dict[str, Any]:
+    """manifest.json of `folder`, parsed and shape-checked; backup_corrupt otherwise."""
+    path = folder / _MANIFEST
+    try:
+        manifest = json.loads(_read_bytes(str(path), _MANIFEST_CAP))
+    except (OSError, SafetyError, ValueError) as exc:
+        raise SafetyError("backup_corrupt", f"{path} is missing or unreadable") from exc
+    problem = _manifest_problem(manifest, backup_id)
+    if problem:
+        raise SafetyError("backup_corrupt", f"{path}: {problem}")
+    return manifest
+
+
+def _manifest_problem(manifest: object, backup_id: str) -> str | None:
+    """What is wrong with a parsed manifest, or None. Known limit (A21): edits to `mode` or
+    `path` that stay well formed cannot be detected; restore re-checks A3 on disk."""
+    if not isinstance(manifest, dict) or manifest.get("backup_id") != backup_id:
+        return "backup_id does not match the folder"
+    if type(manifest.get("appid")) is not int:
+        return "appid is not an integer"
+    for key in ("library", "install_path", "prefix_path"):
+        if manifest.get(key) is not None and not isinstance(manifest.get(key), str):
+            return f"{key} is not text"
+    files = manifest.get("files")
+    if not isinstance(files, list) or not files:
+        return "no files"
+    paths = set()
+    for record in files:
+        problem = _record_problem(record)
+        if problem:
+            return problem
+        paths.add(record["path"])
+    return None if len(paths) == len(files) else "a path is listed twice"
+
+
+def _record_problem(record: object) -> str | None:
+    """What is wrong with one per-file record, or None."""
+    if not isinstance(record, dict):
+        return "a file record is not an object"
+    try:
+        _check_path_text(record.get("path"))
+    except SafetyError as exc:
+        return str(exc)
+    size, mode, copy = record.get("size"), record.get("mode"), record.get("copy")
+    if type(size) is not int or not 0 <= size <= MAX_FILE:
+        return f"bad size for {record['path']}"
+    if type(mode) is not int or not 0 <= mode <= 0o7777:
+        return f"bad mode for {record['path']}"
+    for key in ("sha256_before", "sha256_after"):
+        if not isinstance(record.get(key), str) or not _SHA256.fullmatch(record[key]):
+            return f"bad {key} for {record['path']}"
+    if not isinstance(copy, str) or not re.fullmatch(r"\d+-[^/\0]+", copy):
+        return f"bad copy name for {record['path']}"
+    return None
+
+
+# ---------------------------------------------------------------------------- list
+
+
+def list_backups(backup_root: str) -> list[dict[str, Any]]:
+    """One entry per folder in backup_root (not .lock), sorted by backup_id (A12). .tmp-*
+    folders and folders without a well-formed manifest are "incomplete" (A5). Reads only;
+    never deletes or changes anything. Copies are verified by restore, not here."""
+    root = _backup_root(backup_root)
+    with os.scandir(root) as listing:
+        names = sorted(
+            entry.name
+            for entry in listing
+            if entry.name != _LOCK and entry.is_dir(follow_symlinks=False)
+        )
+    return [_list_entry(root, name) for name in names]
+
+
+def _list_entry(root: Path, name: str) -> dict[str, Any]:
+    folder = root / name
+    entry: dict[str, Any] = {"backup_id": name, "folder": str(folder)}
+    if name.startswith(_TMP_PREFIX):
+        return {**entry, "status": "incomplete", "reason": "never finished (.tmp- folder)"}
+    try:
+        manifest = _load_manifest(folder, name)
+    except SafetyError as exc:
+        return {**entry, "status": "incomplete", "reason": exc.message}
+    return {
+        **entry,
+        "status": "complete",
+        "created_utc": manifest.get("created_utc"),
+        "appid": manifest["appid"],
+        "files": [record["path"] for record in manifest["files"]],
+    }
+
+
+# ---------------------------------------------------------------------------- CLI, AC15
+
+
+def main(argv: list[str] | None = None) -> int:
+    """AC15: list | show <id> | restore <id> [--confirm-overwrite], each with --backup-root.
+    Returns 0, or 2 on SafetyError (one stderr line with the code); other errors propagate."""
+    args = _parser().parse_args(argv)
+    try:
+        root = args.backup_root if args.backup_root is not None else _default_root()
+        if args.command == "list":
+            _print_list(root, list_backups(root))
+        elif args.command == "show":
+            _print_show(
+                _load_manifest(_backup_folder(_backup_root(root), args.backup_id), args.backup_id)
+            )
+        else:
+            confirm = frozenset({"overwrite"}) if args.confirm_overwrite else frozenset()
+            result = restore(args.backup_id, backup_root=root, confirm=confirm)
+            _print_restore(root, result)
+    except SafetyError as exc:
+        if exc.details:
+            print(exc.details, end="" if exc.details.endswith("\n") else "\n")
+        print(f"error: {_one_line(str(exc))}", file=sys.stderr)
+        return 2
+    return 0
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python3 -m deckforge.safety",
+        description="List, show and restore DeckForge backups of game settings files.",
+    )
+    commands = parser.add_subparsers(dest="command", required=True)
+    shown = {
+        "list": "list the backups",
+        "show": "show the files of one backup",
+        "restore": "put the files of one backup back",
+    }
+    for name, help_text in shown.items():
+        command = commands.add_parser(name, help=help_text)
+        command.add_argument(
+            "--backup-root", help="backup folder (default: <home>/deckforge/backups)"
+        )
+        if name != "list":
+            command.add_argument("backup_id")
+        if name == "restore":
+            command.add_argument(
+                "--confirm-overwrite",
+                action="store_true",
+                help="restore files changed since apply, after saving them as a new backup",
+            )
+    return parser
+
+
+def _default_root() -> str:
+    """A18: Path.home()/deckforge/backups, created (parents) only under an existing home."""
+    home = Path.home()
+    if not home.is_absolute() or not _folder_present(home):
+        raise SafetyError("bad_backup_root", f"the home folder {home} is missing")
+    root = home / "deckforge" / "backups"
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise SafetyError("bad_backup_root", f"cannot create {root}: {_why(exc)}") from exc
+    return str(root)
+
+
+def _one_line(text: str) -> str:
+    return text.replace("\r", "\\r").replace("\n", "\\n")
+
+
+def _print_list(root: str, entries: list[dict[str, Any]]) -> None:
+    if not entries:
+        print(f"No backups in {root}")
+        return
+    print(f"Backups in {root} (times are the Deck clock, in UTC):")
+    for entry in entries:
+        if entry["status"] == "complete":
+            files = len(entry["files"])
+            print(
+                f"  {entry['backup_id']}  appid {entry['appid']}  {files} file(s)  "
+                f"created {entry['created_utc']}"
+            )
+        else:
+            print(f"  {_one_line(entry['backup_id'])}  incomplete: {entry['reason']}")
+
+
+def _print_show(manifest: dict[str, Any]) -> None:
+    print(f"Backup {manifest['backup_id']} of appid {manifest['appid']}")
+    print(f"  created {manifest.get('created_utc')} (Deck clock, UTC)")
+    for record in manifest["files"]:
+        print(f"  {record['path']}")
+        print(f"    size {record['size']}  mode {record['mode']:o}")
+        print(f"    sha256_before {record['sha256_before']}")
+        print(f"    sha256_after  {record['sha256_after']}")
+
+
+def _print_restore(root: str, result: dict[str, Any]) -> None:
+    """The end-to-end check: each file's SHA-256 now, next to the backup's sha256_before."""
+    backup_id = result["backup_id"]
+    manifest = _load_manifest(Path(root) / backup_id, backup_id)
+    before = {record["path"]: record["sha256_before"] for record in manifest["files"]}
+    if result["new_backup_id"]:
+        print(f"Your changed version was saved first as backup {result['new_backup_id']}")
+    for label, paths in (("restored", result["restored"]), ("already original", result["skipped"])):
+        for path in paths:
+            print(f"{label}: {path}")
+            print(f"  sha256 in backup {before[path]}")
+            print(f"  sha256 now       {_sha_now(path)}")
+
+
+def _sha_now(path: str) -> str:
+    try:
+        return _sha(_read_bytes(path, MAX_FILE))
+    except (OSError, SafetyError) as exc:
+        return f"(cannot re-read: {exc})"
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
