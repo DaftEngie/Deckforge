@@ -715,3 +715,42 @@ def test_ac5_backup_copies_are_left_as_they_were_after_restore(tmp_path):
     safety.restore(backup_id, **deck.rkw())
     assert {path: path.read_bytes() for path in backup_copies(deck, backup_id)} == copies_before
     assert read_manifest(deck, backup_id) == manifest_before
+
+
+def test_a5_a19_a_crash_during_an_overwrite_restore_never_loses_the_edited_file(
+    tmp_path, monkeypatch
+):
+    # Whatever step the process dies at: the original backup is untouched, every target
+    # is whole, and once the edited file is gone from disk a complete new backup holds it.
+    counter = make_deck(tmp_path / "count")
+    counted = _apply(counter)
+    counter.config.write_bytes(USER_EDIT)
+    rec = Recorder(monkeypatch, counter.base)
+    safety.restore(counted, **counter.rkw(confirm=frozenset({"overwrite"})))
+    monkeypatch.undo()
+    total = len(rec.steps)
+    for step in range(total):
+        deck = make_deck(tmp_path / f"step{step}")
+        backup_id = _apply(deck)
+        deck.config.write_bytes(USER_EDIT)
+        original = content_state(deck.backup_root / backup_id)
+        rec = Recorder(monkeypatch, deck.base, fail_at=step, make_error=crash)
+        with pytest.raises(Crash):
+            safety.restore(backup_id, **deck.rkw(confirm=frozenset({"overwrite"})))
+        monkeypatch.undo()
+        simulate_exit(deck.base)
+        assert rec.failed, f"step {step} was never reached"
+        assert content_state(deck.backup_root / backup_id) == original, f"step {step}"
+        config = deck.config.read_bytes()
+        assert config in (USER_EDIT, CONFIG_INI), f"step {step}: config is not whole"
+        for key in ("gus", "engine"):
+            assert deck.files[key].read_bytes() in (OLD[key], NEW[key]), f"step {step}"
+        for key in KEYS:
+            assert mode_of(deck.files[key]) == 0o644, f"step {step}"
+        entries = safety.list_backups(str(deck.backup_root))
+        assert len(entries) == len(backup_folders(deck)), f"step {step}: {entries}"
+        others = [found for found in complete_ids(entries) if found != backup_id]
+        assert len(others) <= 1, f"step {step}"
+        if config != USER_EDIT:
+            assert others, f"step {step}: the edited file was overwritten without a backup"
+            assert copy_holding(deck, others[0], USER_EDIT)
