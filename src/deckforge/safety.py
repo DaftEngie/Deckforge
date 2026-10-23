@@ -249,6 +249,8 @@ def preview(
     Warnings are dicts {code, message}: not_text (A10), cloud_synced / cloud_unknown
     (AC11, A17; cloud_unknown also when userdata_roots is not given), file_locked (Q6).
     """
+    if userdata_roots is not None and (isinstance(userdata_roots, str) or not userdata_roots):
+        raise SafetyError("no_userdata", "the Steam userdata folders are needed (Steam Cloud)")
     result = []
     for change in changes:
         found = _inspect(change.path, _game_roots(change.card))
@@ -445,7 +447,7 @@ def _locked(backup_root: Path) -> Iterator[None]:
     try:
         fd = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
     except OSError as exc:
-        raise SafetyError("busy", f"cannot open the lock file {lock}: {_why(exc)}") from exc
+        raise SafetyError("cannot_lock", f"cannot open the lock file {lock}: {_why(exc)}") from exc
     try:
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)

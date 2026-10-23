@@ -12,3 +12,18 @@
   but one_file's 4th positional parameter is also called `name` (the file name), so
   Python gets two values for `name`. Test bug; R5 forbids editing it. Fix for the test
   author: rename one_file's parameter (e.g. file_name) or pass the card name another way.
+
+## 2026-10-23 — safety implementation (BLOCKED on one test; 5 more fail only as root here)
+- deckforge.safety implemented (plan, preview, apply, restore, list_backups, CLI). ruff
+  clean, tamper check OK. Locally 1785 pass, 6 fail.
+- BLOCKED: tests/test_safety_guards.py::test_a14_backup_room_one_byte_short_of_the_originals_is_no_space
+  fails on its own line 443, before any safety code runs: it asserts
+  len(CONFIG_INI)+len(GUS_INI) != len(CONFIG_NEW)+len(GUS_NEW), but both are 126 bytes.
+  Test bug; R5 forbids editing it. Fix for the test author: pick fixture bytes whose sums
+  differ, or drop that line. The behavior it targets was checked by hand (needed-1 bytes
+  free -> no_space, exactly needed -> accepted, original sizes used).
+- UNSURE (environment): 5 tests in test_safety_cli.py that restore through the real /proc
+  return cannot_check_running here, because this sandbox runs tests as root and its pid 1
+  (process_api) has an environ that even root cannot read. A16 says an unreadable process
+  of the current user fails closed, so this is the specified behavior. Run as a non-root
+  user (like CI and the Deck), all 234 safety tests but the one above pass. CI run decides.
