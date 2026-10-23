@@ -9,8 +9,10 @@
 #         resolves inside install_path also counts for apply (restore has no card).
 #         Look-alikes do not count: SteamAppId=0, <appid>1, another appid, XSteamAppId.
 #   Post: proc_root missing or not a folder -> cannot_check_running (fail closed).
-#   Post: an environ of the current user's that cannot be read -> cannot_check_running;
-#         one owned by another user that cannot be read is skipped (A16).
+#   Post: a process of the current user's whose cmdline AND environ both cannot be read
+#         -> cannot_check_running (A22 replaces A16 here: an unreadable environ alone is
+#         no longer a refusal; see test_safety_running.py); one owned by another user that
+#         cannot be read is skipped (A16, unchanged by A22).
 #   Post: a game that starts after the backup is built is caught by the check just
 #         before the target rename: game_running, no target changes, no temp file left.
 #   Inv:  a refusal changes nothing and (before any write) leaves no backup folder.
@@ -169,18 +171,22 @@ def test_ac9_restore_with_a_proc_root_that_cannot_be_read_fails_closed(tmp_path,
     assert deck.config.read_bytes() == CONFIG_NEW
 
 
-def test_a16_an_unreadable_process_of_the_current_user_is_cannot_check_running(
+def test_a16_a22_an_unreadable_process_of_the_current_user_is_cannot_check_running(
     tmp_path, monkeypatch
 ):
+    # A22: only a same-user process whose cmdline AND environ are both unreadable fails
+    # closed (an unreadable environ alone is covered in test_safety_running.py).
     deck = make_deck(tmp_path)
     changes = _changes(deck)
     folder = add_process(deck.proc, 4500, environ(PATH="/usr/bin"))
-    mode = mode_of(folder / "environ")
+    fields = [folder / "cmdline", folder / "environ"]
+    modes = [mode_of(path) for path in fields]
     before = deck_state(deck)
-    make_unreadable(monkeypatch, folder / "environ")
+    make_unreadable(monkeypatch, *fields)
     refusal("cannot_check_running", safety.apply, changes, **deck.kw())
     monkeypatch.undo()
-    (folder / "environ").chmod(mode)
+    for path, mode in zip(fields, modes, strict=True):
+        path.chmod(mode)
     _assert_untouched(deck, before)
 
 

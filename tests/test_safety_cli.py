@@ -22,15 +22,24 @@
 #   Post: "apply" is not a command: argparse refuses it (SystemExit, non-zero) or main
 #         returns non-zero; nothing is written either way.
 #   Inv:  `python -m deckforge.safety` runs main and exits with its code.
-#   Note: main has no --proc-root, so restore through the CLI reads the real /proc (read
-#         only); no process on the test machine carries the fake game's appid.
+#   Post: restore through the CLI reads /proc (A21) with the A22 rules: a process there
+#         running the game (environ SteamAppId=<appid>, or cmdline AppId=<appid>) -> 2 with
+#         one stderr line holding game_running, and nothing changes.
+#   Note: main has no --proc-root and the spec names no module-level default proc root, so
+#         every test here serves a fake tree at /proc (serve_fake_proc, autouse fixture
+#         below): reads of /proc/<pid>/... go to tmp_path/proc, not to whatever runs on the
+#         test machine (as root here some real processes are unreadable; in CI, as a normal
+#         user, others are). The python -m test does the same in its child process, through
+#         runpy (what -m uses), for the legs that read /proc.
 
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from test_safety_support import (
+    APPID,
     CONFIG_INI,
     CONFIG_NEW,
     ENGINE_INI,
@@ -38,12 +47,17 @@ from test_safety_support import (
     GUS_INI,
     GUS_NEW,
     REAL,
+    add_process,
     backup_folders,
+    build_proc,
     copy_holding,
     deck_state,
+    environ,
     hold_lock,
     make_deck,
+    reaper_cmdline,
     release,
+    serve_fake_proc,
     sha,
 )
 from test_settings_support import SRC
@@ -56,8 +70,20 @@ KEYS = ("config", "gus", "engine")
 USER_EDIT = b"[Render]\r\nUpscaler=Mine\r\nFrameGen=Off\r\nShadow=High\r\n"
 
 
+TESTS = Path(__file__).resolve().parent
+
+
 class Boom(Exception):
     """Not a SafetyError and not an OSError: main must let it through."""
+
+
+@pytest.fixture(autouse=True)
+def fake_proc(tmp_path, monkeypatch):
+    """The /proc that main sees: the support module's look-alike processes, nothing else."""
+    proc = tmp_path / "proc"
+    build_proc(proc)
+    serve_fake_proc(monkeypatch, proc)
+    return proc
 
 
 def _apply(deck, keys=KEYS):
@@ -261,6 +287,30 @@ def test_ac15_apply_is_a_library_call_not_a_command(tmp_path, capsys):
     assert backup_folders(deck) == []
 
 
+@pytest.mark.parametrize("signal", ["environ", "cmdline"])
+def test_ac15_a22_restore_while_the_game_runs_returns_2_game_running(
+    tmp_path, capsys, fake_proc, signal
+):
+    # Also proves the fake /proc is what main reads: "environ" passes with A16 rules alone.
+    deck = make_deck(tmp_path)
+    backup_id = _apply(deck)
+    if signal == "environ":
+        add_process(fake_proc, 4321, environ(SteamAppId=str(APPID)))
+    else:
+        add_process(
+            fake_proc,
+            4321,
+            environ(HOME="/home/deck"),
+            cmdline=reaper_cmdline(f"AppId={APPID}", "/home/deck/Other/x.exe"),
+        )
+    before = deck_state(deck)
+    capsys.readouterr()
+    assert safety.main(["restore", backup_id, *_root(deck)]) == 2
+    _one_error_line(capsys.readouterr().err, "game_running")
+    assert deck_state(deck) == before
+    assert deck.config.read_bytes() == CONFIG_NEW
+
+
 # ---------------------------------------------------------------------------- A18 default
 
 
@@ -288,11 +338,31 @@ def test_a18_the_default_backup_root_is_created_under_home(tmp_path, monkeypatch
 # ---------------------------------------------------------------------------- python -m
 
 
-def _run(args, home):
+# The child process serves the fake /proc, then runs deckforge.safety as __main__ through
+# runpy, which is what `python -m` does.
+_WITH_FAKE_PROC = (
+    "import runpy, sys\n"
+    "import pytest\n"
+    "from test_safety_support import serve_fake_proc\n"
+    "serve_fake_proc(pytest.MonkeyPatch(), sys.argv[1])\n"
+    "sys.argv = ['deckforge.safety', *sys.argv[2:]]\n"
+    "runpy.run_module('deckforge.safety', run_name='__main__', alter_sys=True)\n"
+)
+
+
+def _run(args, home, proc=None):
+    if proc is None:
+        command = [sys.executable, "-B", "-m", "deckforge.safety", *args]
+    else:
+        command = [sys.executable, "-B", "-c", _WITH_FAKE_PROC, str(proc), *args]
     return subprocess.run(
-        [sys.executable, "-B", "-m", "deckforge.safety", *args],
+        command,
         cwd=home,
-        env={**os.environ, "PYTHONPATH": str(SRC), "HOME": str(home)},
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join([str(SRC), str(TESTS)]),
+            "HOME": str(home),
+        },
         capture_output=True,
         text=True,
         timeout=60,
@@ -300,16 +370,19 @@ def _run(args, home):
     )
 
 
-def test_ac15_python_dash_m_runs_main_with_its_exit_codes(tmp_path):
+def test_ac15_python_dash_m_runs_main_with_its_exit_codes(tmp_path, fake_proc):
     deck = make_deck(tmp_path)
     backup_id = _apply(deck)
     done = _run(["list"], deck.home)
     assert done.returncode == 0, done.stderr
     assert backup_id in done.stdout
-    done = _run(["restore", "20991231-235959-2246340-deadbeef"], deck.home)
+    done = _run(["list", "--backup-root", "deckforge/backups"], deck.home)
+    assert done.returncode == 2
+    _one_error_line(done.stderr, "bad_backup_root")
+    done = _run(["restore", "20991231-235959-2246340-deadbeef"], deck.home, proc=fake_proc)
     assert done.returncode == 2
     _one_error_line(done.stderr)
-    done = _run(["restore", backup_id], deck.home)
+    done = _run(["restore", backup_id], deck.home, proc=fake_proc)
     assert done.returncode == 0, done.stderr
     assert deck.config.read_bytes() == CONFIG_INI
     assert sha(CONFIG_INI) in done.stdout

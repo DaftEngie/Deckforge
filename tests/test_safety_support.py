@@ -15,12 +15,30 @@
 # tier_i_eligible, settings_files [{path, class, kind}]).
 #
 # Fakes, and how they work:
-#   proc_root      a folder of <pid>/environ files (NUL-separated KEY=VALUE) and optional
+#   proc_root      a folder of <pid>/cmdline files (NUL-separated arguments, each ending in
+#                  NUL, as the kernel writes them; every fake process has one unless
+#                  cmdline=None), <pid>/environ files (NUL-separated KEY=VALUE) and optional
 #                  <pid>/exe links, plus non-pid entries ("self", "sys", "version") that
 #                  real /proc also has.
-#   unreadable     opens of one path through os.open, io.open and builtins.open raise
-#                  PermissionError(EACCES), as real /proc does for another user's environ;
-#                  the file is also chmod 000 (enough on its own when not root).
+#   unreadable     opens of the chosen paths through os.open, io.open and builtins.open,
+#                  and os.readlink of them, raise PermissionError(EACCES), as real /proc
+#                  does for another user's environ, or for a non-dumpable process's environ
+#                  and exe even under its own user (A22). The files are also chmod 000
+#                  (enough on its own when not root). The fake sits at the open/readlink
+#                  seam rather than in file modes, because root ignores modes: so it works
+#                  the same as root (this sandbox) and as a normal user (CI). Pass every
+#                  path of a test to ONE call: a second call replaces the first one's fakes.
+#   vanished       make_vanished: the same seam raises ENOENT or ESRCH instead (a process
+#                  that exits while being read); vanish_after_listing: the pid folder is
+#                  really removed (file by file, no recursive delete) right after proc_root
+#                  is listed, so every later access fails with a real ENOENT.
+#   real /proc     serve_fake_proc: paths "/proc" and "/proc/<x>/..." (except /proc/self
+#                  and /proc/thread-self, which the fakes here use for fd paths) are
+#                  redirected to a fake proc tree at the same seam (open, scandir, listdir,
+#                  stat, lstat, readlink, access). Used by the CLI tests: main has no
+#                  --proc-root and the spec names no module-level default, so this is how
+#                  CLI restore (A21: "reads the real /proc") is run against a known set of
+#                  processes instead of whatever runs on the test machine.
 #   other owner    os.stat / os.lstat / os.fstat, and the stat() of entries os.scandir
 #                  yields, report st_uid = <current uid> + 4242 for the chosen paths; when
 #                  the tests run as root the paths are also really chowned to that uid.
@@ -126,6 +144,7 @@ REAL = {
     "statvfs": os.statvfs,
     "scandir": os.scandir,
     "listdir": os.listdir,
+    "readlink": os.readlink,
     "unlink": os.unlink,
     "remove": os.remove,
     "rmdir": os.rmdir,
@@ -325,11 +344,48 @@ def environ(**values: str) -> bytes:
     return b"".join(f"{key}={value}".encode() + b"\0" for key, value in values.items())
 
 
+def cmdline_of(*args: str | Path) -> bytes:
+    """A /proc/<pid>/cmdline: every argument followed by NUL."""
+    return b"".join(os.fsencode(arg) + b"\0" for arg in args)
+
+
+DEFAULT_CMDLINE = cmdline_of("/usr/bin/fake-process", "--serve")
+REAPER = "/home/deck/.steam/root/ubuntu12_32/reaper"
+
+
+def reaper_cmdline(appid_arg: str, game_exe: str | Path) -> bytes:
+    """What Steam's launcher looks like (A22): reaper SteamLaunch AppId=<appid> -- ...
+    `game_exe` is the last argument, as Proton's waitforexitandrun receives it."""
+    common = "/home/deck/.local/share/Steam/steamapps/common"
+    return cmdline_of(
+        REAPER,
+        "SteamLaunch",
+        appid_arg,
+        "--",
+        "/home/deck/.steam/root/ubuntu12_32/steam-launch-wrapper",
+        "--",
+        f"{common}/SteamLinuxRuntime_sniper/_v2-entry-point",
+        "--verb=waitforexitandrun",
+        "--",
+        f"{common}/Proton 9.0 (Beta)/proton",
+        "waitforexitandrun",
+        game_exe,
+    )
+
+
 def add_process(
-    proc: Path, pid: int, env: bytes | None = None, exe: str | Path | None = None
+    proc: Path,
+    pid: int,
+    env: bytes | None = None,
+    exe: str | Path | None = None,
+    cmdline: bytes | None = DEFAULT_CMDLINE,
 ) -> Path:
+    """A fake <pid> folder. cmdline=None leaves the cmdline file out (only for tests that
+    want a process with no cmdline at all); every other process has one, as in real /proc."""
     folder = proc / str(pid)
     folder.mkdir(parents=True, exist_ok=True)
+    if cmdline is not None:
+        (folder / "cmdline").write_bytes(cmdline)
     if env is not None:
         (folder / "environ").write_bytes(env)
     if exe is not None:
@@ -339,13 +395,25 @@ def add_process(
 
 def build_proc(proc: Path) -> None:
     """Processes that must NOT count as the game: no Steam ids, SteamAppId=0, an appid that
-    merely starts with APPID's digits, another game, a kernel thread (empty environ)."""
+    merely starts with APPID's digits, another game, a kernel thread (empty environ and
+    empty cmdline, as the kernel shows them)."""
     proc.mkdir(parents=True)
-    add_process(proc, 1, environ(PATH="/usr/bin", HOME="/home/deck"), exe="/usr/lib/systemd")
-    add_process(proc, 2, environ(SteamAppId="0", SteamGameId="0"))
+    add_process(
+        proc,
+        1,
+        environ(PATH="/usr/bin", HOME="/home/deck"),
+        exe="/usr/lib/systemd",
+        cmdline=cmdline_of("/usr/lib/systemd/systemd", "--user"),
+    )
+    add_process(
+        proc,
+        2,
+        environ(SteamAppId="0", SteamGameId="0"),
+        cmdline=cmdline_of("/home/deck/.steam/root/ubuntu12_32/steam", "-steamdeck"),
+    )
     add_process(proc, 3, environ(SteamAppId=f"{APPID}1", STEAM_COMPAT_APP_ID=f"{APPID}1"))
     add_process(proc, 4, environ(SteamAppId=str(OTHER_APPID), STEAM_COMPAT_APP_ID="1061090"))
-    add_process(proc, 5, b"")
+    add_process(proc, 5, b"", cmdline=b"")
     add_process(proc, 6, environ(XSteamAppId=str(APPID), LAST="x"))
     (proc / "self").symlink_to("1")
     (proc / "sys" / "kernel").mkdir(parents=True)
@@ -362,29 +430,157 @@ def _matches(path: Any, chosen: set[str]) -> bool:
     return abs_path(path) in chosen
 
 
-def make_unreadable(monkeypatch: pytest.MonkeyPatch, *paths: Path) -> None:
-    """Opening any of `paths` for reading raises PermissionError(EACCES)."""
+def _fail_reads(monkeypatch: pytest.MonkeyPatch, paths: Iterable[Path], code: int) -> None:
+    """os.open, io.open, builtins.open and os.readlink of any of `paths` raise
+    OSError(code) (OSError picks the subclass: PermissionError, FileNotFoundError,
+    ProcessLookupError)."""
     chosen = {abs_path(path) for path in paths}
-    for path in paths:
-        if path.is_file():
-            path.chmod(0)
 
-    def denied(path: Any) -> PermissionError:
-        return PermissionError(errno.EACCES, "Permission denied", os.fsdecode(path))
+    def failure(path: Any) -> OSError:
+        return OSError(code, os.strerror(code), os.fsdecode(path))
 
     def fake_os_open(path, flags, *args, **kwargs):
         if _matches(path, chosen):
-            raise denied(path)
+            raise failure(path)
         return REAL["os_open"](path, flags, *args, **kwargs)
 
     def fake_open(file, *args, **kwargs):
         if not isinstance(file, int) and _matches(file, chosen):
-            raise denied(file)
+            raise failure(file)
         return REAL["io_open"](file, *args, **kwargs)
+
+    def fake_readlink(path, *args, **kwargs):
+        if not isinstance(path, int) and _matches(path, chosen):
+            raise failure(path)
+        return REAL["readlink"](path, *args, **kwargs)
 
     monkeypatch.setattr(os, "open", fake_os_open)
     monkeypatch.setattr(io, "open", fake_open)
     monkeypatch.setattr(builtins, "open", fake_open)
+    monkeypatch.setattr(os, "readlink", fake_readlink)
+
+
+def make_unreadable(monkeypatch: pytest.MonkeyPatch, *paths: Path) -> None:
+    """Opening (or readlink of) any of `paths` raises PermissionError(EACCES)."""
+    for path in paths:
+        if path.is_file() and not path.is_symlink():
+            path.chmod(0)
+    _fail_reads(monkeypatch, paths, errno.EACCES)
+
+
+def make_vanished(monkeypatch: pytest.MonkeyPatch, *paths: Path, code: int) -> None:
+    """Opening (or readlink of) any of `paths` raises ENOENT or ESRCH (`code`): the process
+    exited between proc_root being listed and its files being read."""
+    assert code in (errno.ENOENT, errno.ESRCH)
+    _fail_reads(monkeypatch, paths, code)
+
+
+def vanish_after_listing(monkeypatch: pytest.MonkeyPatch, proc: Path, folder: Path) -> None:
+    """The first time proc_root is listed (os.listdir or os.scandir), the listing still
+    holds `folder`, which is then really removed (each file unlinked, then the folder
+    rmdir'ed; never a recursive delete)."""
+    root = abs_path(proc)
+    done: list[bool] = []
+
+    def remove() -> None:
+        if done:
+            return
+        done.append(True)
+        for child in REAL["listdir"](folder):
+            REAL["unlink"](folder / child)
+        REAL["rmdir"](folder)
+
+    def listed(path: Any) -> bool:
+        return not isinstance(path, int) and abs_path(path) == root
+
+    def fake_listdir(path=".", *args, **kwargs):
+        names = REAL["listdir"](path, *args, **kwargs)
+        if listed(path) and not done:
+            assert folder.name in names
+            remove()
+        return names
+
+    def fake_scandir(path=".", *args, **kwargs):
+        with REAL["scandir"](path, *args, **kwargs) as inner:
+            entries = list(inner)
+        if listed(path) and not done:
+            assert folder.name in [entry.name for entry in entries]
+            remove()
+        return _Listed(entries)
+
+    monkeypatch.setattr(os, "listdir", fake_listdir)
+    monkeypatch.setattr(os, "scandir", fake_scandir)
+
+
+class _Listed:
+    """An os.scandir result read in full up front."""
+
+    def __init__(self, entries: list[os.DirEntry]) -> None:
+        self._entries = iter(entries)
+
+    def __iter__(self) -> _Listed:
+        return self
+
+    def __next__(self) -> os.DirEntry:
+        return next(self._entries)
+
+    def __enter__(self) -> _Listed:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+_PROC_KEPT = ("self", "thread-self")
+
+
+def _to_fake_proc(path: Any, fake: str) -> Any:
+    """`path` with a leading /proc swapped for `fake`; other paths are returned as they are."""
+    if isinstance(path, int) or not isinstance(path, str | bytes | os.PathLike):
+        return path
+    text = os.fsdecode(path)
+    if not text.startswith("/"):
+        return path
+    norm = os.path.normpath(text)
+    if norm != "/proc" and not norm.startswith("/proc/"):
+        return path
+    rest = norm[len("/proc") :].lstrip("/")
+    if rest.split("/")[0] in _PROC_KEPT:
+        return path
+    moved = fake + ("/" + rest if rest else "")
+    return os.fsencode(moved) if isinstance(path, bytes) else moved
+
+
+def serve_fake_proc(monkeypatch: pytest.MonkeyPatch, fake: Path) -> None:
+    """Every read of the real /proc (open, scandir, listdir, stat, lstat, readlink, access)
+    goes to the fake tree `fake` instead; /proc/self and /proc/thread-self stay real."""
+    root = abs_path(fake)
+
+    def wrap(real: Callable[..., Any], *, default_path: bool = False) -> Callable[..., Any]:
+        if default_path:
+
+            def fake_listing(path=".", *args, **kwargs):
+                return real(_to_fake_proc(path, root), *args, **kwargs)
+
+            return fake_listing
+
+        def fake_call(path, *args, **kwargs):
+            return real(_to_fake_proc(path, root), *args, **kwargs)
+
+        return fake_call
+
+    monkeypatch.setattr(os, "open", wrap(REAL["os_open"]))
+    monkeypatch.setattr(io, "open", wrap(REAL["io_open"]))
+    monkeypatch.setattr(builtins, "open", wrap(REAL["builtins_open"]))
+    monkeypatch.setattr(os, "scandir", wrap(REAL["scandir"], default_path=True))
+    monkeypatch.setattr(os, "listdir", wrap(REAL["listdir"], default_path=True))
+    monkeypatch.setattr(os, "stat", wrap(REAL["stat"]))
+    monkeypatch.setattr(os, "lstat", wrap(REAL["lstat"]))
+    monkeypatch.setattr(os, "readlink", wrap(REAL["readlink"]))
+    monkeypatch.setattr(os, "access", wrap(REAL["access"]))
 
 
 class _OwnedBy:
