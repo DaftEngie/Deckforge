@@ -48,7 +48,6 @@
 
 import errno
 import os
-import re
 import secrets
 import stat
 from datetime import UTC, datetime, timedelta
@@ -64,6 +63,7 @@ from test_safety_support import (
     FILE_MISSING_TEXT,
     GUS_INI,
     GUS_NEW,
+    ID_PATTERN,
     REAL,
     Crash,
     Recorder,
@@ -91,7 +91,6 @@ from test_safety_support import (
 import deckforge
 from deckforge import safety
 
-ID_PATTERN = re.compile(rf"^(\d{{8}}-\d{{6}})-{APPID}-([0-9a-f]{{8}})$")
 THREE = (
     ("config", CONFIG_INI, CONFIG_NEW),
     ("gus", GUS_INI, GUS_NEW),

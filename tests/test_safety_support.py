@@ -54,6 +54,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -92,6 +93,9 @@ CHANGED_TEXT = (
     "changed it)"
 )
 CLOUD_TEXT = "may sync to your other devices"
+
+# A11: <YYYYmmdd-HHMMSS>-<appid>-<8 hex from secrets.token_hex(4)> (lowercase hex).
+ID_PATTERN = re.compile(rf"^(\d{{8}}-\d{{6}})-{APPID}-([0-9a-f]{{8}})$")
 
 LAYOUTS = ("steam", "sd", "flatpak", "linked")
 
@@ -348,12 +352,12 @@ def _matches(path: Any, chosen: set[str]) -> bool:
             return False
     if not isinstance(path, str | bytes | os.PathLike):
         return False
-    return _abs(path) in chosen
+    return abs_path(path) in chosen
 
 
 def make_unreadable(monkeypatch: pytest.MonkeyPatch, *paths: Path) -> None:
     """Opening any of `paths` for reading raises PermissionError(EACCES)."""
-    chosen = {_abs(path) for path in paths}
+    chosen = {abs_path(path) for path in paths}
     for path in paths:
         if path.is_file():
             path.chmod(0)
@@ -396,7 +400,7 @@ class _OwnedBy:
 def make_foreign(monkeypatch: pytest.MonkeyPatch, *paths: Path) -> int:
     """`paths` look owned by another user; returns that uid."""
     uid = os.getuid() + FOREIGN_UID_OFFSET
-    chosen = {_abs(path) for path in paths}
+    chosen = {abs_path(path) for path in paths}
     if os.geteuid() == 0:
         for path in paths:
             os.chown(path, uid, uid, follow_symlinks=False)
@@ -431,7 +435,7 @@ class _Entry:
 
     def stat(self, *, follow_symlinks: bool = True) -> Any:
         result = self._inner.stat(follow_symlinks=follow_symlinks)
-        return _OwnedBy(result, self._uid) if _abs(self.path) in self._chosen else result
+        return _OwnedBy(result, self._uid) if abs_path(self.path) in self._chosen else result
 
     def __fspath__(self) -> str:
         return os.fspath(self._inner)
@@ -468,18 +472,18 @@ def lock_folder(monkeypatch: pytest.MonkeyPatch, folder: Path) -> None:
     """`folder` cannot be written to: mode 0o555, and (for root, who ignores modes)
     os.access(W_OK) is False and creating an entry inside raises PermissionError."""
     folder.chmod(0o555)
-    real = _abs(folder)
+    real = abs_path(folder)
 
     def inside(path: Any) -> bool:
         if isinstance(path, int):
             return False
-        return str(Path(_abs(path)).parent) == real
+        return str(Path(abs_path(path)).parent) == real
 
     def denied(path: Any) -> PermissionError:
         return PermissionError(errno.EACCES, "Permission denied", os.fsdecode(path))
 
     def fake_access(path, mode, *args, **kwargs):
-        if not isinstance(path, int) and _abs(path) == real and mode & os.W_OK:
+        if not isinstance(path, int) and abs_path(path) == real and mode & os.W_OK:
             return False
         return REAL["access"](path, mode, *args, **kwargs)
 
@@ -563,7 +567,7 @@ def record_deletions(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
 
     def wrap(name: str, real: Callable[..., Any]) -> Callable[..., Any]:
         def fake(path, *args, **kwargs):
-            shown = fd_path(path) if isinstance(path, int) else _abs(path)
+            shown = fd_path(path) if isinstance(path, int) else abs_path(path)
             seen.append((name, shown))
             return real(path, *args, **kwargs)
 
@@ -582,7 +586,7 @@ def simulate_exit(top: Path) -> None:
     are collected (closing them), then every fd still open on a path under `top` (a raw
     os.open fd, such as the held .lock) is closed, which frees its flock."""
     gc.collect()
-    root = _abs(top)
+    root = abs_path(top)
     fds = [int(child.name) for child in Path("/proc/self/fd").iterdir()]
     for fd in fds:
         path = fd_path(fd)
@@ -688,7 +692,7 @@ class Recorder:
         keep_failing: Callable[[str, str, str | None], bool] | None = None,
         hook: Callable[[Recorder, str, str, str | None], None] | None = None,
     ) -> None:
-        self.root = _abs(root)
+        self.root = abs_path(root)
         self.steps: list[tuple[str, str, str | None]] = []
         self.fail_at = fail_at
         self.make_error = make_error or default_error
@@ -701,7 +705,7 @@ class Recorder:
     def inside(self, path: str | None) -> bool:
         if not path:
             return False
-        path = _abs(path)
+        path = abs_path(path)
         return path == self.root or path.startswith(self.root + os.sep)
 
     def step(self, op: str, path: str, path2: str | None = None) -> None:
@@ -786,10 +790,10 @@ class Recorder:
 
 
 def _text(path: Any) -> str:
-    return _abs(path)
+    return abs_path(path)
 
 
-def _abs(path: Any) -> str:
+def abs_path(path: Any) -> str:
     """os.path.abspath without following links (spelled so the PTH lint rules pass)."""
     return os.path.normpath(Path(os.fsdecode(path)).absolute())
 
@@ -818,12 +822,12 @@ def content_state(top: Path, skip: Iterable[Path] = ()) -> dict[str, tuple]:
     """Names, types, permission bits, bytes and link targets under `top` (not mtimes or
     inodes, which an atomic replace changes). Paths in `skip` are left out with their
     contents."""
-    skipped = {_abs(path) for path in skip}
+    skipped = {abs_path(path) for path in skip}
     state: dict[str, tuple] = {}
     pending = [top]
     while pending:
         path = pending.pop()
-        if _abs(path) in skipped:
+        if abs_path(path) in skipped:
             continue
         info = path.lstat()
         kind = stat.S_IFMT(info.st_mode)
