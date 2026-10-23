@@ -360,3 +360,23 @@ differ. All of them take the conservative option.
       processes appear root-owned in `/proc`, so they are skipped. The cmdline-based rule
       covers both cases. Fede is told it relaxes the earlier fail-closed rule only when a
       process's cmdline is readable.
+24. **Decided after the second verifier review, 2026-10-23.**
+    - **A second Ctrl-C during rollback.** A `KeyboardInterrupt` raised while rolling back
+      is recorded as a failed rollback for that file. The user then gets the normal
+      `rollback_failed` error naming the backup folder and which files hold which version,
+      never a bare traceback.
+    - **Ctrl-C at the final step.** If a `KeyboardInterrupt` arrives after every target was
+      written and the backup is complete (for example while the lock is being released),
+      `apply` still returns the `backup_id`. The CLI's `restore` still prints its result.
+      The interrupt is not re-raised, because the operation already succeeded.
+    - **The gid range.** A manifest `gid` must be an integer with
+      `0 <= gid < 2**32 - 1`. Otherwise the backup is `backup_corrupt`, refused before any
+      write. No temp file is created.
+    - **Test gap.** A cmdline argument that reaches the install folder through a symlink
+      counts as the game (`game_running`).
+    - **Known limits, accepted:**
+      - A Wine-style `Z:\…` argument and an `--opt=/path` argument are not matched. Steam's
+        launcher (`AppId=`) and Proton's script stay visible for the whole session, so
+        they are caught anyway.
+      - SIGKILL leaves a `.deckforge-*.tmp` file in the game folder. That is harmless and
+        unavoidable.
