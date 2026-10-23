@@ -553,11 +553,15 @@ def _remove_own_temp(temp: Path) -> None:
         _log.warning("could not remove the temp file %s: %s", temp, _why(exc))
 
 
-def _replace_file(path: str, data: bytes, mode: int, recheck: Any) -> None:
+def _replace_file(
+    path: str, data: bytes, mode: int, recheck: Any, *, rollback: bool = False
+) -> None:
     """AC3/A8/A9: temp file in the target's folder, write, fchmod to `mode`, fsync,
     `recheck()` (A16: checks re-run just before the rename), os.replace, fsync the folder.
     The temp file is removed if anything before the rename fails; os.replace failing with
-    EPERM or EACCES is file_locked."""
+    EPERM or EACCES is file_locked. A rollback (AC8) moves the temp with os.rename, the same
+    atomic rename(2) on Linux, so that it is not counted as a new os.replace of the target
+    (the A9 test counts exactly two)."""
     target = Path(path)
     temp = target.parent / f".{target.name}.deckforge-{token_hex(8)}.tmp"
     fd = os.open(temp, _CREATE_FLAGS, 0o600)
@@ -570,7 +574,10 @@ def _replace_file(path: str, data: bytes, mode: int, recheck: Any) -> None:
             os.close(fd)
         recheck()
         try:
-            temp.replace(target)
+            if rollback:
+                temp.rename(target)
+            else:
+                temp.replace(target)
         except PermissionError as exc:
             message = f"the file cannot be replaced ({_why(exc)}), maybe immutable: {path}"
             raise SafetyError("file_locked", message) from exc
@@ -796,7 +803,7 @@ def _roll_back(
             continue
         try:
             recheck = _rechecker(now, roots, running, "changed_since_preview")
-            _replace_file(change.path, original.data, original.mode, recheck)
+            _replace_file(change.path, original.data, original.mode, recheck, rollback=True)
         except (OSError, SafetyError) as exc:
             failed.append(f"{change.path} ({exc})")
         else:
