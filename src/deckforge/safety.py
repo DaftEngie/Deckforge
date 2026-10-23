@@ -1,7 +1,7 @@
 """deckforge.safety: preview, backup, atomic apply and verified restore of game settings files.
 
 Spec: docs/specs/safety-module.md (AC1-AC15 and the binding clarifier answers, cited here as
-A1-A21). Every later write DeckForge makes to a user's Deck goes through this module (R10).
+A1-A23). Every later write DeckForge makes to a user's Deck goes through this module (R10).
 
 Rules this module keeps:
 - Only a non-registry `ini` entry of the card's `settings_files` is ever written (Q1, A1-A3).
@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import errno
 import fcntl
 import hashlib
 import json
@@ -612,12 +613,32 @@ def _remove_own_temp(temp: Path) -> None:
         _log.warning("could not remove the temp file %s: %s", temp, _why(exc))
 
 
+def _set_group(fd: int, gid: int | None, path: str) -> None:
+    """A23: give the temp file the original's group. EPERM (a group this user is not in)
+    does not stop the write: it is logged as the warning group_not_kept."""
+    if gid is None:
+        return
+    try:
+        os.fchown(fd, -1, gid)
+    except PermissionError as exc:
+        if exc.errno != errno.EPERM:
+            raise
+        _log.warning("group_not_kept: cannot give %s its group %s: %s", path, gid, _why(exc))
+
+
 def _replace_file(
-    path: str, data: bytes, mode: int, recheck: Any, *, rollback: bool = False
+    path: str,
+    data: bytes,
+    mode: int,
+    recheck: Any,
+    *,
+    gid: int | None = None,
+    rollback: bool = False,
 ) -> None:
-    """AC3/A8/A9: temp file in the target's folder, write, fchmod to `mode`, fsync,
-    `recheck()` (A16: checks re-run just before the rename), os.replace, fsync the folder.
-    The temp file is removed if anything before the rename fails; os.replace failing with
+    """AC3/A8/A9/A23: temp file in the target's folder, write, fchown to `gid`, fchmod to
+    `mode` (after fchown, which may clear set-id bits), fsync, `recheck()` (A16: checks
+    re-run just before the rename), os.replace, fsync the folder. The temp file is removed
+    if anything before the rename fails or Ctrl-C arrives (A23); os.replace failing with
     EPERM or EACCES is file_locked. A rollback (AC8) moves the temp with os.rename, the same
     atomic rename(2) on Linux, so that it is not counted as a new os.replace of the target
     (the A9 test counts exactly two)."""
@@ -627,6 +648,7 @@ def _replace_file(
     try:
         try:
             _write_all(fd, data)
+            _set_group(fd, gid, path)
             os.fchmod(fd, mode)
             os.fsync(fd)
         finally:
@@ -640,7 +662,7 @@ def _replace_file(
         except PermissionError as exc:
             message = f"the file cannot be replaced ({_why(exc)}), maybe immutable: {path}"
             raise SafetyError("file_locked", message) from exc
-    except (OSError, SafetyError):
+    except (OSError, SafetyError, KeyboardInterrupt):
         _remove_own_temp(temp)
         raise
     _fsync_folder(target.parent)
@@ -667,19 +689,25 @@ def _rechecker(found: _OnDisk, roots: Sequence[str], running: Any, code: str) ->
 
 @dataclass(frozen=True)
 class _Item:
-    """One file going into a backup: its current bytes and mode, and the hash written next."""
+    """One file going into a backup: its current bytes, mode and group (A23), and the hash
+    written next."""
 
     path: str
     data: bytes
     mode: int
+    gid: int
     sha256_after: str
 
 
 def _new_backup(root: Path, appid: int, game: dict[str, Any], items: Sequence[_Item]) -> str:
     """A5/AC2/A11: build <root>/.tmp-<id>/ (copies written, fsynced and read back, then
     manifest.json last and fsynced), rename it to <root>/<id>/, fsync <root>. Returns the id.
-    A failure leaves the .tmp-<id> folder in place (listed as incomplete, never deleted)."""
-    backup_id, tmp = _make_tmp_folder(root, appid)
+    A failure leaves the .tmp-<id> folder in place (listed as incomplete, never deleted).
+    Ctrl-C is SafetyError("interrupted") naming the backup folder (A23)."""
+    try:
+        backup_id, tmp = _make_tmp_folder(root, appid)
+    except KeyboardInterrupt as exc:
+        raise SafetyError("interrupted", "interrupted (Ctrl-C); nothing was changed") from exc
     try:
         records = []
         for index, item in enumerate(items):
@@ -711,15 +739,22 @@ def _new_backup(root: Path, appid: int, game: dict[str, Any], items: Sequence[_I
         raise SafetyError("backup_failed", message) from exc
     except SafetyError as exc:
         raise SafetyError(exc.code, f"{exc.message}; nothing was changed; {tmp}") from exc
+    except KeyboardInterrupt as exc:
+        final = root / backup_id
+        where = f"the backup is kept in {final}" if final.is_dir() else f"incomplete: {tmp}"
+        message = f"interrupted (Ctrl-C) while saving the backup; nothing was changed; {where}"
+        raise SafetyError("interrupted", message) from exc
     return backup_id
 
 
 def _record(item: _Item, copy: str) -> dict[str, Any]:
-    """A manifest entry (AC2): path, size, mode, sha256_before, sha256_after, and the copy."""
+    """A manifest entry (AC2, A23): path, size, mode, gid, sha256_before, sha256_after, and
+    the copy."""
     return {
         "path": item.path,
         "size": len(item.data),
         "mode": item.mode,
+        "gid": item.gid,
         "sha256_before": _sha(item.data),
         "sha256_after": item.sha256_after,
         "copy": copy,
@@ -789,7 +824,7 @@ def apply(
         for change in changes:
             _check_space(Path(change.path).parent, len(change.new_bytes))
         items = [
-            _Item(item.path, item.data, item.mode, _sha(change.new_bytes))
+            _Item(item.path, item.data, item.mode, item.info.st_gid, _sha(change.new_bytes))
             for item, change in zip(found, changes, strict=True)
         ]
         backup_id = _new_backup(root, appid, _game_fields(card), items)
@@ -831,12 +866,14 @@ def _write_targets(
     running: Any,
     folder: Path,
 ) -> None:
-    """AC3 per target; on any error, AC8/A7 rollback and a report naming the backup folder."""
+    """AC3 per target; on any error or Ctrl-C (A23), AC8/A7 rollback and a report naming
+    the backup folder."""
     try:
         for change, item in zip(changes, found, strict=True):
             recheck = _rechecker(item, roots, running, "changed_since_preview")
-            _replace_file(change.path, change.new_bytes, item.mode, recheck)
-    except (OSError, SafetyError) as exc:
+            gid = item.info.st_gid
+            _replace_file(change.path, change.new_bytes, item.mode, recheck, gid=gid)
+    except (OSError, SafetyError, KeyboardInterrupt) as exc:
         restored, kept, failed = _roll_back(changes, found, roots, running)
         raise _apply_error(exc, folder, restored, kept, failed) from exc
 
@@ -862,7 +899,10 @@ def _roll_back(
             continue
         try:
             recheck = _rechecker(now, roots, running, "changed_since_preview")
-            _replace_file(change.path, original.data, original.mode, recheck, rollback=True)
+            gid = original.info.st_gid
+            _replace_file(
+                change.path, original.data, original.mode, recheck, gid=gid, rollback=True
+            )
         except (OSError, SafetyError) as exc:
             failed.append(f"{change.path} ({exc})")
         else:
@@ -871,7 +911,7 @@ def _roll_back(
 
 
 def _apply_error(
-    exc: OSError | SafetyError,
+    exc: OSError | SafetyError | KeyboardInterrupt,
     folder: Path,
     restored: list[str],
     kept: list[str],
@@ -880,6 +920,8 @@ def _apply_error(
     """AC8: what happened, what was rolled back, and where the originals are."""
     if isinstance(exc, SafetyError):
         code, what = exc.code, exc.message or exc.code
+    elif isinstance(exc, KeyboardInterrupt):
+        code, what = "interrupted", "interrupted (Ctrl-C) while writing"
     else:
         code, what = "write_failed", f"a write failed: {exc}"
     parts = [what]
@@ -917,6 +959,8 @@ def restore(
     folder = _backup_folder(root, backup_id)
     with _locked(root):
         manifest, copies = _verified(folder, backup_id)
+        for record in manifest["files"]:
+            _check_restorable_name(record["path"])
         game = _game_fields(manifest)
         _backup_root(root, game.values())
         roots = _game_roots(manifest)
@@ -940,17 +984,38 @@ def restore(
         if changed:
             _check_space(root, sum(len(found[index].data) for index in writes))
             items = [
-                _Item(found[i].path, found[i].data, found[i].mode, records[i]["sha256_before"])
+                _Item(
+                    found[i].path,
+                    found[i].data,
+                    found[i].mode,
+                    found[i].info.st_gid,
+                    records[i]["sha256_before"],
+                )
                 for i in writes
             ]
             new_backup_id = _new_backup(root, appid, game, items)
-        restored = _restore_files(records, copies, found, writes, roots, running, folder)
+        kept = [folder] + ([root / new_backup_id] if new_backup_id else [])
+        restored = _restore_files(records, copies, found, writes, roots, running, kept)
     return {
         "backup_id": backup_id,
         "restored": restored,
         "skipped": [records[index]["path"] for index in skipped],
         "new_backup_id": new_backup_id,
     }
+
+
+_NEVER_RESTORED = frozenset({"user.reg", "system.reg", "userdef.reg"})
+
+
+def _check_restorable_name(path: str) -> None:
+    """A23: a manifest record is restored only if its base name ends in .ini (any case), is
+    not a Wine registry file and its path does not end in .vdf; else not_a_settings_file.
+    Run on every record before anything is written, since an edited manifest could
+    otherwise reroute a restore onto Steam's or Wine's files."""
+    name = Path(path).name.lower()
+    if not name.endswith(".ini") or name in _NEVER_RESTORED or path.lower().endswith(".vdf"):
+        message = f"the backup names a file that is not a game's .ini settings file: {path}"
+        raise SafetyError("not_a_settings_file", message)
 
 
 def _backup_folder(root: Path, backup_id: object) -> Path:
@@ -1013,22 +1078,33 @@ def _restore_files(
     writes: Sequence[int],
     roots: Sequence[str],
     running: Any,
-    folder: Path,
+    kept: Sequence[Path],
 ) -> list[str]:
-    """AC3 per file. An error stops restore; every file stays whole, and running restore
-    again finishes the job (files already back are skipped)."""
+    """AC3 per file, with the group recorded in the manifest (A23). An error or Ctrl-C
+    stops restore; every file stays whole, and running restore again finishes the job
+    (files already back are skipped). The message names the backups kept (`kept`)."""
     restored: list[str] = []
     for index in writes:
-        path = records[index]["path"]
+        record = records[index]
+        path = record["path"]
         recheck = _rechecker(found[index], roots, running, "changed_since_apply")
         try:
-            _replace_file(path, copies[index], records[index]["mode"], recheck)
-        except (OSError, SafetyError) as exc:
-            code = exc.code if isinstance(exc, SafetyError) else "restore_failed"
+            _replace_file(path, copies[index], record["mode"], recheck, gid=record.get("gid"))
+        except (OSError, SafetyError, KeyboardInterrupt) as exc:
+            what = str(exc)
+            if isinstance(exc, SafetyError):
+                code = exc.code
+            elif isinstance(exc, KeyboardInterrupt):
+                code, what = "interrupted", "interrupted (Ctrl-C)"
+            else:
+                code = "restore_failed"
+            if _sha_now(path) == record["sha256_before"]:
+                restored.append(path)  # replaced before the failure (the folder fsync)
             done = ", ".join(restored) or "none"
+            backups = ", ".join(str(item) for item in kept)
             message = (
-                f"restoring {path} failed ({exc}); already restored: {done}; every file is "
-                f"whole; the backup {folder} is kept; run restore again to finish"
+                f"restoring {path} failed ({what}); already restored: {done}; every file is "
+                f"whole; kept backups: {backups}; run restore again to finish"
             )
             raise SafetyError(code, message) from exc
         restored.append(path)
@@ -1103,6 +1179,9 @@ def _record_problem(record: object) -> str | None:
         return f"bad size for {record['path']}"
     if type(mode) is not int or not 0 <= mode <= 0o7777:
         return f"bad mode for {record['path']}"
+    gid = record.get("gid")  # A23; a record made before A23 has none
+    if gid is not None and (type(gid) is not int or gid < 0):
+        return f"bad gid for {record['path']}"
     for key in ("sha256_before", "sha256_after"):
         if not isinstance(record.get(key), str) or not _SHA256.fullmatch(record[key]):
             return f"bad {key} for {record['path']}"

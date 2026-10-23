@@ -37,3 +37,16 @@
 - Decided (spec silent): a readable cmdline/environ of another user's process still counts
   (as environ already did); the cmdline-path signal also runs in restore, using the
   manifest's install_path (like the exe signal).
+
+## 2026-10-23 — safety spec item 23 (Ctrl-C, non-ini restore records, group kept)
+- Ctrl-C in apply: own temp file removed, answer-7 rollback, SafetyError("interrupted")
+  naming the backup folder and the files rolled back; lock freed. Ctrl-C while the backup
+  is built -> interrupted, nothing changed. Ctrl-C in restore: stops, files whole,
+  message names files already restored and every backup kept (incl. a new overwrite one).
+- Restore refuses any manifest record whose base name is not *.ini (any case), is
+  user/system/userdef.reg, or whose path ends in .vdf (not_a_settings_file), before any write.
+- Manifest records gid; temp files get it via os.fchown(fd, -1, gid) before fchmod and
+  rename; EPERM -> write proceeds, WARNING log "group_not_kept: <path> ...".
+- Decided (spec silent): a record without gid (made before A23) is accepted and its
+  group is left as the temp file gets it.
+- 1866 tests pass locally (as root), ruff clean, tamper check OK.
