@@ -305,3 +305,31 @@ differ. All of them take the conservative option.
       because the manifest has no checksum of its own. Restore still re-checks Q1 path
       rules on disk (answer 3) before writing, so an edited path can't point outside the
       game's folders.
+22. **Decided after the first CI run, 2026-10-23: the game-running check must work with
+    hidden processes.**
+    - **The problem.**
+      - Processes that mark themselves non-dumpable (`prctl(PR_SET_DUMPABLE, 0)`) have an
+        unreadable `environ` and `exe`, even for their own user. Reproduced in the
+        sandbox: environ unreadable, cmdline readable.
+      - Chromium-based helpers such as Steam's `steamwebhelper`, and agents like
+        `ssh-agent`, do this. A real Deck almost certainly has some running.
+      - Under answer 16, every apply would then be refused (`cannot_check_running`).
+    - **New rule, replacing answer 16's handling of unreadable processes.** For every
+      process owned by the current user:
+      1. Read `cmdline`, which stays readable for non-dumpable processes. It is
+         split on NUL.
+      2. Mark the process "running the game" if any argument equals `AppId=<appid>`
+         (Steam's launcher runs `reaper SteamLaunch AppId=<appid> -- …`), or if any
+         argument is a path inside the card's `install_path`.
+      3. Also read `environ` when readable, and match `SteamAppId=<appid>` /
+         `STEAM_COMPAT_APP_ID=<appid>` as before.
+      4. Handle unreadable fields:
+         - An unreadable `environ` with a readable `cmdline` is **not** a refusal; the
+           cmdline result decides.
+         - Only a same-user process whose `cmdline` **and** `environ` are both
+           unreadable gives `cannot_check_running`. Processes that vanish while being
+           read (ENOENT/ESRCH) are skipped.
+    - **Unchanged:** other users' processes are skipped, and `exe` is an extra signal
+      only.
+    - **To confirm on the Deck:** that the `reaper SteamLaunch AppId=` form appears
+      while a game runs. The CLI's `restore` will report which signal matched.
