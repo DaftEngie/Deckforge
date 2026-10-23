@@ -27,3 +27,13 @@
   (process_api) has an environ that even root cannot read. A16 says an unreadable process
   of the current user fails closed, so this is the specified behavior. Run as a non-root
   user (like CI and the Deck), all 234 safety tests but the one above pass. CI run decides.
+
+## 2026-10-23 — safety spec item 22 (cmdline-based running check)
+- _check_running now reads each process's cmdline (AppId=<appid> argument, or an absolute
+  path inside install_path, compared as written and after realpath) before environ.
+  Only both-unreadable same-user processes give cannot_check_running; ENOENT/ESRCH skip.
+- 1830 tests pass locally (as root), ruff clean. The earlier root-only /proc failures are
+  gone: pid 1's cmdline is readable here.
+- Decided (spec silent): a readable cmdline/environ of another user's process still counts
+  (as environ already did); the cmdline-path signal also runs in restore, using the
+  manifest's install_path (like the exe signal).

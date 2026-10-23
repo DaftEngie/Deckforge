@@ -13,9 +13,10 @@ Rules this module keeps:
   fsync (AC3). The target itself is never written in place or chmod-ed (A8).
 - Nothing is ever deleted except a temp file this module created for a write that failed
   (AC3, AC14, R6). Backup folders, even incomplete ones, are never removed.
-- Games started outside Steam are not detected as running (A16): the check looks for
-  SteamAppId / STEAM_COMPAT_APP_ID in each process's environment, with the process's exe
-  link inside the install folder as an extra signal.
+- Games started outside Steam are not detected as running (A16) unless a program argument
+  is a path inside the install folder: the check looks for an AppId=<appid> argument or
+  such a path in each process's cmdline (A22), SteamAppId / STEAM_COMPAT_APP_ID in its
+  environment, and its exe link inside the install folder as an extra signal.
 """
 
 from __future__ import annotations
@@ -381,49 +382,105 @@ def _check_cloud(
 # ---------------------------------------------------------------------------- running, AC9
 
 
+class _Gone(Exception):
+    """The process exited while it was being read (ENOENT/ESRCH): skip it (A22)."""
+
+
 def _check_running(appid: int, install_path: str | None, proc_root: str) -> None:
-    """AC9/A16: game_running if a process's environ has SteamAppId=<appid> or
+    """AC9/A16/A22: game_running if a process's cmdline has an argument exactly
+    AppId=<appid> or a path inside install_path, its environ has SteamAppId=<appid> or
     STEAM_COMPAT_APP_ID=<appid>, or its exe link resolves inside install_path. Fails
     closed (cannot_check_running) when proc_root cannot be listed or a process of the
-    current user cannot be read; unreadable processes of other users are skipped."""
-    wanted = {f"SteamAppId={appid}".encode(), f"STEAM_COMPAT_APP_ID={appid}".encode()}
+    current user has both cmdline and environ unreadable; processes that vanish while
+    being read, and unreadable processes of other users, are skipped."""
     try:
         with os.scandir(proc_root) as listing:
             pids = sorted(entry.name for entry in listing if _is_pid(entry.name))
     except OSError as exc:
         raise SafetyError("cannot_check_running", f"cannot list {proc_root}: {_why(exc)}") from exc
     for pid in pids:
-        folder = Path(proc_root, pid)
-        environ = _read_environ(folder)
-        if environ is not None and wanted & set(environ.split(b"\0")):
-            raise SafetyError("game_running", f"the game is running (process {pid}); quit it")
-        if install_path and _exe_inside(folder, install_path):
-            raise SafetyError("game_running", f"a game program is running (process {pid})")
+        try:
+            signal = _game_signal(Path(proc_root, pid), appid, install_path)
+        except _Gone as gone:
+            _log.debug("skipping process %s: %s", pid, gone)
+            continue
+        if signal:
+            message = f"the game is running (process {pid}, seen by its {signal}); quit it"
+            raise SafetyError("game_running", message)
 
 
 def _is_pid(name: str) -> bool:
     return name.isascii() and name.isdigit()
 
 
-def _read_environ(folder: Path) -> bytes | None:
-    """One process's environ; None if it is gone, or unreadable and another user's (A16)."""
-    path = folder / "environ"
+def _game_signal(folder: Path, appid: int, install_path: str | None) -> str | None:
+    """Which signal shows this process runs the game ("cmdline", "environ", "exe"), or
+    None. Raises _Gone if it vanished; cannot_check_running if it is the current user's
+    and neither cmdline nor environ can be read (A22)."""
+    cmdline = _read_proc_field(folder / "cmdline")
+    if cmdline is not None and _cmdline_matches(cmdline.split(b"\0"), appid, install_path):
+        return "cmdline"
+    environ = _read_proc_field(folder / "environ")
+    wanted = {f"SteamAppId={appid}".encode(), f"STEAM_COMPAT_APP_ID={appid}".encode()}
+    if environ is not None and wanted & set(environ.split(b"\0")):
+        return "environ"
+    if cmdline is None and environ is None:
+        _check_foreign(folder)
+        return None
+    if install_path and _exe_inside(folder, install_path):
+        return "exe"
+    return None
+
+
+def _cmdline_matches(args: Sequence[bytes], appid: int, install_path: str | None) -> bool:
+    """A22: an argument exactly AppId=<appid>, or an absolute path inside install_path
+    (compared as written and after resolving links, so a sibling folder whose name only
+    starts with the install folder's name does not count)."""
+    if f"AppId={appid}".encode() in args:
+        return True
+    if not install_path:
+        return False
+    root = Path(os.path.normpath(install_path))
+    for arg in args:
+        text = os.fsdecode(arg)
+        if not text.startswith("/"):
+            continue
+        if Path(os.path.normpath(text)).is_relative_to(root):
+            return True
+        if _inside(Path(os.path.realpath(text)), [install_path]):
+            return True
+    return False
+
+
+def _read_proc_field(path: Path) -> bytes | None:
+    """One /proc/<pid> file's bytes; None if access is denied (EACCES/EPERM). Raises
+    _Gone if the process vanished, cannot_check_running for any other failure."""
     try:
         return _read_bytes(str(path), _ENVIRON_CAP)
-    except (FileNotFoundError, ProcessLookupError):
-        return None
+    except (FileNotFoundError, ProcessLookupError) as exc:
+        raise _Gone(f"{path}: {_why(exc)}") from exc
     except PermissionError as exc:
-        try:
-            owner = path.stat().st_uid
-        except OSError as inner:
-            message = f"cannot check {path}: {_why(inner)}"
-            raise SafetyError("cannot_check_running", message) from inner
-        if owner != os.geteuid():
-            _log.debug("skipping %s of uid %s: %s", path, owner, _why(exc))
-            return None
-        raise SafetyError("cannot_check_running", f"cannot read {path}: {_why(exc)}") from exc
+        _log.debug("cannot read %s: %s", path, _why(exc))
+        return None
     except (OSError, SafetyError) as exc:
         raise SafetyError("cannot_check_running", f"cannot read {path}: {exc}") from exc
+
+
+def _check_foreign(folder: Path) -> None:
+    """Neither cmdline nor environ is readable: skip the process if it is another user's
+    (A16), else fail closed (A22). Raises _Gone if it vanished meanwhile."""
+    try:
+        owner = folder.stat().st_uid
+    except (FileNotFoundError, ProcessLookupError) as exc:
+        raise _Gone(f"{folder}: {_why(exc)}") from exc
+    except OSError as exc:
+        message = f"cannot check {folder}: {_why(exc)}"
+        raise SafetyError("cannot_check_running", message) from exc
+    if owner != os.geteuid():
+        _log.debug("skipping unreadable %s of uid %s", folder, owner)
+        return
+    message = f"cannot read the cmdline or environ of {folder} (a process of this user)"
+    raise SafetyError("cannot_check_running", message)
 
 
 def _exe_inside(folder: Path, install_path: str) -> bool:
