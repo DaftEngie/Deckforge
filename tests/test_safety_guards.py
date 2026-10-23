@@ -31,9 +31,10 @@
 #         restore raise busy and change nothing; once it exits (or is killed) they work.
 #         apply holds the lock while it replaces targets.
 #
-# Free space (A14): os.statvfs shows less free space than the originals' total on the
-#   backup filesystem, or than the new size on a target's filesystem -> no_space before
-#   any write.
+# Free space (A14): os.statvfs (f_bavail * f_frsize) shows less free space than the
+#   originals' total on the backup filesystem, or than the new size on a target's
+#   filesystem -> no_space before any write (one byte short is enough to refuse); 1 MiB
+#   free everywhere is enough for these small files.
 # SD card missing (A15): the target's folder or the whole library is gone at apply or
 #   restore -> target_unavailable ("insert the SD card or check the library"); nothing is
 #   created; the backup is kept and works once the card is back.
@@ -66,6 +67,8 @@ from test_safety_support import (
     environ,
     full_disk,
     hold_lock,
+    MiB,
+    low_disk,
     make_deck,
     make_foreign,
     make_unreadable,
@@ -430,6 +433,40 @@ def test_a14_a_full_target_disk_is_no_space_before_any_write(tmp_path, monkeypat
     refusal("no_space", safety.apply, changes, **deck.kw())
     monkeypatch.undo()
     _assert_untouched(deck, before)
+
+
+def test_a14_backup_room_one_byte_short_of_the_originals_is_no_space(tmp_path, monkeypatch):
+    # A14: the backup filesystem needs the sum of the ORIGINAL sizes (not the new ones).
+    deck = make_deck(tmp_path)
+    changes = _changes(deck)
+    needed = len(CONFIG_INI) + len(GUS_INI)
+    assert needed != len(CONFIG_NEW) + len(GUS_NEW)
+    before = deck_state(deck)
+    low_disk(monkeypatch, {deck.backup_root: needed - 1})
+    refusal("no_space", safety.apply, changes, **deck.kw())
+    monkeypatch.undo()
+    _assert_untouched(deck, before)
+
+
+def test_a14_target_room_one_byte_short_of_the_new_size_is_no_space(tmp_path, monkeypatch):
+    deck = make_deck(tmp_path)
+    changes = _changes(deck)
+    before = deck_state(deck)
+    low_disk(monkeypatch, {deck.gus.parent: len(GUS_NEW) - 1})
+    refusal("no_space", safety.apply, changes, **deck.kw())
+    monkeypatch.undo()
+    _assert_untouched(deck, before)
+
+
+def test_a14_a_mib_free_everywhere_is_enough(tmp_path, monkeypatch):
+    deck = make_deck(tmp_path)
+    changes = _changes(deck)
+    free = {deck.backup_root: MiB, deck.config.parent: MiB, deck.gus.parent: MiB}
+    low_disk(monkeypatch, free)
+    safety.apply(changes, **deck.kw())
+    monkeypatch.undo()
+    assert deck.config.read_bytes() == CONFIG_NEW
+    assert deck.gus.read_bytes() == GUS_NEW
 
 
 # ---------------------------------------------------------------------------- A15 SD card

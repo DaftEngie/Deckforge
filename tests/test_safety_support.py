@@ -3,9 +3,10 @@
 # here as A1-A20). This file holds no tests. The contracts sit at the top of each file:
 #   test_safety_plan.py     plan, Change, preview          AC1 AC4 AC7 A1-A4 A10
 #   test_safety_apply.py    apply: backup, atomic write    AC2 AC3 AC8 AC10 A5-A9 A11 A14
-#   test_safety_guards.py   apply/restore refusals         AC9 AC11 AC13 A13 A15-A18
-#   test_safety_restore.py  restore, list_backups          AC5 AC6 AC12 AC14 A5 A12 A19 A20
-#   test_safety_cli.py      main                           AC15
+#   test_safety_guards.py   apply/restore refusals         AC9 AC11 AC13 A13-A18
+#   test_safety_restore.py  restore, list_backups          AC5 AC6 AC10 AC12 AC14 A5 A12
+#                                                          A19 A20
+#   test_safety_cli.py      main                           AC15 A18
 #
 # Everything lives under pytest's tmp_path; nothing reads or writes a real Steam install
 # (R7) and nothing is deleted outside tmp_path (R6). The game card is built by the real
@@ -20,11 +21,17 @@
 #   unreadable     opens of one path through os.open, io.open and builtins.open raise
 #                  PermissionError(EACCES), as real /proc does for another user's environ;
 #                  the file is also chmod 000 (enough on its own when not root).
-#   other owner    os.stat / os.lstat / os.fstat report st_uid = <current uid> + 4242 for
-#                  the chosen paths; when the tests run as root the paths are also really
-#                  chowned to that uid. os.DirEntry.stat cannot be faked this way.
-#   statvfs        os.statvfs (shutil.disk_usage uses it too) reports 0 free blocks for
+#   other owner    os.stat / os.lstat / os.fstat, and the stat() of entries os.scandir
+#                  yields, report st_uid = <current uid> + 4242 for the chosen paths; when
+#                  the tests run as root the paths are also really chowned to that uid.
+#   statvfs        os.statvfs (shutil.disk_usage uses it too) reports 0 free blocks
+#                  (full_disk), or exactly N free bytes in 1-byte blocks (low_disk), for
 #                  paths inside the chosen folders.
+#   process death  simulate_exit: after a Crash, collect dropped file objects and close
+#                  every fd still open under the Deck (frees a held flock), as the kernel
+#                  does when a process dies.
+#   deletions      record_deletions: every os.unlink / remove / rmdir / removedirs and
+#                  shutil.rmtree call is recorded (and still performed).
 #   lock holder    a second Python process that holds fcntl.flock(LOCK_EX) on
 #                  <backup_root>/.lock until its stdin is closed.
 #   Recorder       counts every write-side step that touches the fixture (os.replace,
