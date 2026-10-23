@@ -333,3 +333,30 @@ differ. All of them take the conservative option.
       only.
     - **To confirm on the Deck:** that the `reaper SteamLaunch AppId=` form appears
       while a game runs. The CLI's `restore` will report which signal matched.
+23. **Decided after the verifier review, 2026-10-23.**
+    - **Ctrl-C (`KeyboardInterrupt`) during apply is treated like any other failure
+      (AC8):**
+      - remove the module's own temp file;
+      - roll back files already written (answer 7 rules);
+      - raise `SafetyError("interrupted")` whose message says what was restored or kept,
+        and where the backup is.
+      - Restore does the same: it stops and reports, keeping any new backup.
+    - **Restore refuses non-`ini` records (`not_a_settings_file`).** A manifest record
+      whose base name doesn't end in `.ini` (case-insensitive) is refused before any
+      write. So is a record whose base name is `user.reg`, `system.reg` or `userdef.reg`,
+      or whose path ends in `.vdf`.
+      - This corrects answer 21's claim: an edited manifest could otherwise reroute a
+        restore onto Steam's or Wine's files.
+    - **Group is kept.** The manifest records each file's `gid`. Apply and restore set
+      the temp file's group to the original `gid` (`os.fchown(fd, -1, gid)`) before the
+      rename. If that fails with `EPERM`, the write still proceeds and the warning
+      `group_not_kept` is reported. The file's contents and mode are what matter.
+    - **Test gaps to close:**
+      - the fsync of the `.tmp-<id>` folder before it is renamed;
+      - restore re-checking the path rules on disk (answers 3 and 21) against the
+        manifest's roots.
+    - **Note on answer 22's reasoning.** The verifier reproduced the refusal with a
+      same-user process that holds a Linux capability, and found that non-dumpable
+      processes appear root-owned in `/proc`, so they are skipped. The cmdline-based rule
+      covers both cases. Fede is told it relaxes the earlier fail-closed rule only when a
+      process's cmdline is readable.
