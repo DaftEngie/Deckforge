@@ -55,7 +55,7 @@
 #   confirmed with "locked"): apply then restore gives back the starting tree, every byte
 #   and permission bit, and the restored/skipped split is the hand-computed one.
 
-import random
+import hashlib
 import secrets
 import shutil
 import stat
@@ -504,18 +504,55 @@ def test_a5_list_of_an_empty_backup_root_is_empty(tmp_path):
 # ---------------------------------------------------------------------------- AC6 round trip
 
 SEED = 20261022
+
+
+class Seeded:
+    """A small deterministic generator (SHA-256 in counter mode): the same SEED always
+    gives the same cases, with no dependency and no global random state."""
+
+    def __init__(self, seed: int) -> None:
+        self._seed = str(seed).encode()
+        self._count = 0
+
+    def _block(self) -> bytes:
+        self._count += 1
+        return hashlib.sha256(self._seed + self._count.to_bytes(8, "big")).digest()
+
+    def _next(self) -> int:
+        return int.from_bytes(self._block()[:8], "big")
+
+    def random(self) -> float:
+        return self._next() / 2**64
+
+    def randint(self, low: int, high: int) -> int:
+        return low + self._next() % (high - low + 1)
+
+    def choice(self, items):
+        return items[self._next() % len(items)]
+
+    def sample(self, items, count: int) -> list:
+        pool = list(items)
+        return [pool.pop(self._next() % len(pool)) for _ in range(count)]
+
+    def randbytes(self, size: int) -> bytes:
+        out = b""
+        while len(out) < size:
+            out += self._block()
+        return out[:size]
+
+
 WORDS = ["Upscaler", "Shadow", "Größe", "画質", "Ñandú", "Frame Gen", "r.Bloom", "x"]
 MODES = [0o644, 0o600, 0o640, 0o664, 0o604, 0o444, 0o400]
 
 
-def _text(rng: random.Random) -> str:
+def _text(rng: Seeded) -> str:
     lines = [f"[{rng.choice(WORDS)}]"]
     for _ in range(rng.randint(0, 12)):
         lines.append(f"{rng.choice(WORDS)}={rng.choice(WORDS)}{rng.randint(0, 99)}")
     return "\n".join(lines) + "\n"
 
 
-def _content(rng: random.Random) -> bytes:
+def _content(rng: Seeded) -> bytes:
     text = _text(rng)
     kind = rng.choice(
         [
@@ -555,7 +592,7 @@ def _content(rng: random.Random) -> bytes:
 
 
 def _cases():
-    rng = random.Random(SEED)  # noqa: S311 - a fixed-seed test generator, not crypto
+    rng = Seeded(SEED)
     cases = []
     for index in range(24):
         keys = rng.sample(list(KEYS), rng.randint(1, 3))
